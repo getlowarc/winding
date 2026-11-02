@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Winding moved to the LowArc organisation on GitHub:** <https://github.com/getlowarc/winding>,
+  with the live demo at <https://getlowarc.github.io/winding/demo/>. The npm name is still
+  `winding-engine`, and old GitHub links redirect.
 - **A point or spot light's shadow draws only the casters that reach each view.** Every face of a
   point light drew every caster in the scene and let the GPU clip what fell outside; now each face
   drawn lists the casters whose boxes reach into it, batch by batch, and draws those, through
