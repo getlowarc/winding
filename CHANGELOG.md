@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-02
+
+**A new home, and cheaper torches.** Winding lives in the LowArc organisation on GitHub now, and a
+point or spot light's shadow draws only the casters that reach each of its views: a dungeon of 36
+shadowed torches went from 13.0 to 6.8 ms of GPU time.
+
+### Changed
+
+- **Winding moved to the LowArc organisation on GitHub:** <https://github.com/getlowarc/winding>,
+  with the live demo at <https://getlowarc.github.io/winding/demo/>. The npm name is still
+  `winding-engine`, and old GitHub links redirect.
+- **A point or spot light's shadow draws only the casters that reach each view.** Every face of a
+  point light drew every caster in the scene and let the GPU clip what fell outside; now each face
+  drawn lists the casters whose boxes reach into it, batch by batch, and draws those, through
+  `firstInstance` from the list. The picture is the same to the pixel. A dungeon of 36 shadowed
+  torches and 40 walkers, after 1.9.0's faces-that-changed: 13.0 to 6.8 ms of GPU time on Iris Xe,
+  21.9 ms before both, for about 0.5 ms of CPU listing. With LOD the GPU still chooses a group's
+  level, so those scenes draw every caster as before.
+
 ## [1.9.0] - 2026-10-30
 
 **Ready for games.** A lost GPU device is recovered from instead of ending the session, and
@@ -2606,40 +2625,41 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/nolanbaxter/winding/compare/v1.9.0...HEAD
-[1.9.0]: https://github.com/nolanbaxter/winding/compare/v1.8.0...v1.9.0
-[1.8.0]: https://github.com/nolanbaxter/winding/compare/v1.7.0...v1.8.0
-[1.7.0]: https://github.com/nolanbaxter/winding/compare/v1.6.1...v1.7.0
-[1.6.1]: https://github.com/nolanbaxter/winding/compare/v1.6.0...v1.6.1
-[1.6.0]: https://github.com/nolanbaxter/winding/compare/v1.5.0...v1.6.0
-[1.5.0]: https://github.com/nolanbaxter/winding/compare/v1.4.0...v1.5.0
-[1.4.0]: https://github.com/nolanbaxter/winding/compare/v1.3.0...v1.4.0
-[1.3.0]: https://github.com/nolanbaxter/winding/compare/v1.2.0...v1.3.0
-[1.2.0]: https://github.com/nolanbaxter/winding/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/nolanbaxter/winding/compare/v1.1.0...v1.1.1
-[1.1.0]: https://github.com/nolanbaxter/winding/compare/v1.0.1...v1.1.0
-[1.0.1]: https://github.com/nolanbaxter/winding/compare/v1.0.0...v1.0.1
-[1.0.0]: https://github.com/nolanbaxter/winding/compare/v0.14.0...v1.0.0
-[0.14.0]: https://github.com/nolanbaxter/winding/compare/v0.13.0...v0.14.0
-[0.13.0]: https://github.com/nolanbaxter/winding/compare/v0.12.0...v0.13.0
-[0.12.0]: https://github.com/nolanbaxter/winding/compare/v0.11.0...v0.12.0
-[0.11.0]: https://github.com/nolanbaxter/winding/compare/v0.10.1...v0.11.0
-[0.10.1]: https://github.com/nolanbaxter/winding/compare/v0.10.0...v0.10.1
-[0.10.0]: https://github.com/nolanbaxter/winding/compare/v0.9.1...v0.10.0
-[0.9.1]: https://github.com/nolanbaxter/winding/compare/v0.9.0...v0.9.1
-[0.9.0]: https://github.com/nolanbaxter/winding/compare/v0.8.0...v0.9.0
-[0.8.0]: https://github.com/nolanbaxter/winding/compare/v0.7.3...v0.8.0
-[0.7.3]: https://github.com/nolanbaxter/winding/compare/v0.7.2...v0.7.3
-[0.7.2]: https://github.com/nolanbaxter/winding/compare/v0.7.1...v0.7.2
-[0.7.1]: https://github.com/nolanbaxter/winding/compare/v0.7.0...v0.7.1
-[0.7.0]: https://github.com/nolanbaxter/winding/compare/v0.6.2...v0.7.0
-[0.6.2]: https://github.com/nolanbaxter/winding/compare/v0.6.1...v0.6.2
-[0.6.1]: https://github.com/nolanbaxter/winding/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/nolanbaxter/winding/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/nolanbaxter/winding/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/nolanbaxter/winding/compare/v0.3.1...v0.4.0
-[0.3.1]: https://github.com/nolanbaxter/winding/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/nolanbaxter/winding/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/nolanbaxter/winding/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/nolanbaxter/winding/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/nolanbaxter/winding/releases/tag/v0.1.0
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
+[1.9.0]: https://github.com/getlowarc/winding/compare/v1.8.0...v1.9.0
+[1.8.0]: https://github.com/getlowarc/winding/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/getlowarc/winding/compare/v1.6.1...v1.7.0
+[1.6.1]: https://github.com/getlowarc/winding/compare/v1.6.0...v1.6.1
+[1.6.0]: https://github.com/getlowarc/winding/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/getlowarc/winding/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/getlowarc/winding/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/getlowarc/winding/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/getlowarc/winding/compare/v1.1.1...v1.2.0
+[1.1.1]: https://github.com/getlowarc/winding/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/getlowarc/winding/compare/v1.0.1...v1.1.0
+[1.0.1]: https://github.com/getlowarc/winding/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/getlowarc/winding/compare/v0.14.0...v1.0.0
+[0.14.0]: https://github.com/getlowarc/winding/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/getlowarc/winding/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/getlowarc/winding/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/getlowarc/winding/compare/v0.10.1...v0.11.0
+[0.10.1]: https://github.com/getlowarc/winding/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/getlowarc/winding/compare/v0.9.1...v0.10.0
+[0.9.1]: https://github.com/getlowarc/winding/compare/v0.9.0...v0.9.1
+[0.9.0]: https://github.com/getlowarc/winding/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/getlowarc/winding/compare/v0.7.3...v0.8.0
+[0.7.3]: https://github.com/getlowarc/winding/compare/v0.7.2...v0.7.3
+[0.7.2]: https://github.com/getlowarc/winding/compare/v0.7.1...v0.7.2
+[0.7.1]: https://github.com/getlowarc/winding/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/getlowarc/winding/compare/v0.6.2...v0.7.0
+[0.6.2]: https://github.com/getlowarc/winding/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/getlowarc/winding/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/getlowarc/winding/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/getlowarc/winding/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/getlowarc/winding/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/getlowarc/winding/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/getlowarc/winding/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/getlowarc/winding/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/getlowarc/winding/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/getlowarc/winding/releases/tag/v0.1.0

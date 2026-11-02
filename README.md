@@ -6,8 +6,8 @@
 </picture>
 
 [![npm](https://img.shields.io/npm/v/winding-engine?color=%23cb3837&label=winding-engine)](https://www.npmjs.com/package/winding-engine)
-[![CI](https://github.com/nolanbaxter/winding/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nolanbaxter/winding/actions/workflows/ci.yml)
-[![live demo](https://img.shields.io/badge/demo-live-e07a5f)](https://nolanbaxter.github.io/winding/demo/)
+[![CI](https://github.com/getlowarc/winding/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/getlowarc/winding/actions/workflows/ci.yml)
+[![live demo](https://img.shields.io/badge/demo-live-e07a5f)](https://getlowarc.github.io/winding/demo/)
 [![API reference](https://img.shields.io/badge/API-reference-2f6f4e)](docs/API.md)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -140,7 +140,7 @@ import are the files in this repository.
 
 ```html
 <script type="module">
-  import { Winding, Camera } from 'https://cdn.jsdelivr.net/npm/winding-engine@1.9.0/src/winding.js';
+  import { Winding, Camera } from 'https://cdn.jsdelivr.net/npm/winding-engine@1.9.1/src/winding.js';
 </script>
 ```
 
@@ -165,8 +165,8 @@ completion and hover help.
 <script type="importmap">
 {
   "imports": {
-    "winding-engine": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.0/src/winding.js",
-    "winding-engine/": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.0/src/"
+    "winding-engine": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.1/src/winding.js",
+    "winding-engine/": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.1/src/"
   }
 }
 </script>
@@ -469,7 +469,7 @@ These are real and currently unaddressed.
 
 Bugs, ideas and pull requests are welcome. Work happens on the `develop` branch; `main` holds
 released code. [CONTRIBUTING.md](CONTRIBUTING.md) has how to run both test suites and what a change
-includes; questions go to [Discussions](https://github.com/nolanbaxter/winding/discussions).
+includes; questions go to [Discussions](https://github.com/getlowarc/winding/discussions).
 
 ## License
 

@@ -84,7 +84,7 @@ Match the code around you. Comments say why, in full sentences. Names are short 
 
 - **Bugs:** open an issue with the bug form. The browser, GPU and the GPU test page's result make
   most reports answerable at once.
-- **Questions and ideas:** [Discussions](https://github.com/nolanbaxter/winding/discussions).
+- **Questions and ideas:** [Discussions](https://github.com/getlowarc/winding/discussions).
 - **Security issues:** privately, as [SECURITY.md](SECURITY.md) says, not in an issue.
 
 By taking part you agree to the [code of conduct](CODE_OF_CONDUCT.md).
