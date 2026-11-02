@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **A point light's shadow is looked up without its face's matrix.** Each pixel lit by a shadowed
+  point light loaded that cube face's view matrix and multiplied by it, light by light; a face is a
+  fixed 90-degree view down an axis, so where a point falls on it is two of its components over the
+  third. Measured to the pixel against the matrix: no pixel differs. A dungeon of 36 shadowed
+  torches: the forward pass from 16.5 to 14.4 ms on Iris Xe. Spots still go through their matrix.
+
 ## [1.9.1] - 2026-11-02
 
 **A new home, and cheaper torches.** Winding lives in the LowArc organisation on GitHub now, and a

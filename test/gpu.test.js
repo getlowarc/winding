@@ -1280,6 +1280,66 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report.join(', ');
   });
 
+  await step("a point light's shadow falls right on every face of its cube", async () => {
+    // The step above, turned six ways: the ground, the blocker and the light
+    // under one node, rotated so the blocker lies along +x, -x, +y, -y, +z and
+    // -z of the light, and the camera turned with them. Each is a different
+    // face of the cube, read by the shader with its own axes and signs. The
+    // blocker is off the axis, at (0.9, 1, 0.4) under the light at (0, 3, 0),
+    // so its shadow falls at (1.35, 0, 0.6): a face read with an axis flipped,
+    // or the two swapped as well, puts it at one of the mirrors of that point
+    // sampled here, all far enough from it to stay lit. (Swapped alone it
+    // lands on (0.6, 1.35), which the real shadow, wider than it looks, covers.)
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const block = await engine.load(buildFeatureGLB({ baseColorFactor: [0.2, 0.2, 0.2, 1] }));
+    const turn = (axis, angle) => { const q = [0, 0, 0, 1]; const s = Math.sin(angle / 2); return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle / 2)]; };
+    const rotate = (q, v) => {
+      const [x, y, z, w] = q;
+      const tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]);
+      return [v[0] + w * tx + y * tz - z * ty, v[1] + w * ty + z * tx - x * tz, v[2] + w * tz + x * ty - y * tx];
+    };
+    // Each turns the light's down, (0, -1, 0), onto the face's axis.
+    const faces = [
+      ['+x', turn([0, 0, 1], Math.PI / 2)], ['-x', turn([0, 0, 1], -Math.PI / 2)],
+      ['+y', turn([1, 0, 0], Math.PI)], ['-y', [0, 0, 0, 1]],
+      ['+z', turn([1, 0, 0], -Math.PI / 2)], ['-z', turn([1, 0, 0], Math.PI / 2)],
+    ];
+    const brightness = async (q, castShadow) => {
+      const scene = engine.createScene();
+      const root = scene.createNode().setRotation(q);
+      scene.add(ground, { parent: root }).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+      scene.add(block, { parent: root }).setAxisAngle([1, 0, 0], Math.PI / 2).setScale(0.35, 0.35, 1).setPosition(0.9, 1, 0.4);
+      scene.addLight({ parent: root, position: [0, 3, 0], intensity: 40, radius: 12, castShadow });
+      const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+      cam.position.set(rotate(q, [0, 6, 0.01]));
+      cam.target.set([0, 0, 0]);
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const { width, height } = engine.gpu;
+      // A point on the ground, turned with it, onto the screen.
+      const at = ([gx, gz]) => {
+        const [x, y, z] = rotate(q, [gx, 0, gz]), m = cam.viewProjection;
+        const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+        const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w) * 0.5 + 0.5;
+        const sy = 0.5 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / w) * 0.5;
+        const i = (Math.floor(sy * height) * width + Math.floor(sx * width)) * 4;
+        return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      };
+      return { under: at([1.35, 0.6]), beside: [[-1.35, 0.6], [1.35, -0.6], [-1.35, -0.6], [-0.6, 1.35], [0.6, -1.35], [-0.6, -1.35]].map(at) };
+    };
+    const report = [];
+    for (const [name, q] of faces) {
+      const lit = await brightness(q, false);
+      const shadowed = await brightness(q, true);
+      if (!(shadowed.under < lit.under - 20)) throw new Error(`${name}: under the blocker ${lit.under.toFixed(0)} -> ${shadowed.under.toFixed(0)}, no shadow`);
+      shadowed.beside.forEach((v, k) => {
+        if (Math.abs(v - lit.beside[k]) > 2) throw new Error(`${name}: beside the blocker ${lit.beside[k].toFixed(0)} -> ${v.toFixed(0)}, shadow where nothing casts`);
+      });
+      report.push(`${name} ${lit.under.toFixed(0)} -> ${shadowed.under.toFixed(0)}`);
+    }
+    return report.join(', ');
+  });
+
   await step('a light with a size casts soft shadows: sharp by the caster, wider the farther it falls, and a switch turns them off', async () => {
     const canvas = document.createElement('canvas');
     canvas.style.width = '200px';
