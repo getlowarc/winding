@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-02
+
+**A new home, and cheaper torches.** Winding lives in the LowArc organisation on GitHub now, and a
+point or spot light's shadow draws only the casters that reach each of its views: a dungeon of 36
+shadowed torches went from 13.0 to 6.8 ms of GPU time.
+
 ### Changed
 
 - **Winding moved to the LowArc organisation on GitHub:** <https://github.com/getlowarc/winding>,
@@ -2619,7 +2625,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/getlowarc/winding/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/getlowarc/winding/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/getlowarc/winding/compare/v1.6.1...v1.7.0
