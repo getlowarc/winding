@@ -4,13 +4,13 @@
   "description": "A WebGPU rendering engine for the browser. No dependencies, no build step.",
   "license": "MIT",
   "author": "Nolan Baxter",
-  "homepage": "https://github.com/nolanbaxter/winding#readme",
+  "homepage": "https://github.com/getlowarc/winding#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nolanbaxter/winding.git"
+    "url": "git+https://github.com/getlowarc/winding.git"
   },
   "bugs": {
-    "url": "https://github.com/nolanbaxter/winding/issues"
+    "url": "https://github.com/getlowarc/winding/issues"
   },
   "keywords": [
     "webgpu",

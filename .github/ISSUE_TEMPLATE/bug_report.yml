@@ -43,7 +43,7 @@ body:
     id: gpu-suite
     attributes:
       label: The GPU test page
-      description: "Open https://nolanbaxter.github.io/winding/test/gpu.html, or run `npm run test:gpu` in a clone, and say how it went. It tells a driver problem from an engine one."
+      description: "Open https://getlowarc.github.io/winding/test/gpu.html, or run `npm run test:gpu` in a clone, and say how it went. It tells a driver problem from an engine one."
       options:
         - All passed
         - Some failed (say which below)

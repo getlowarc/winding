@@ -28,7 +28,7 @@
 #
 # ONE-TIME SETUP on npmjs.com:
 #   winding-engine -> Settings -> Trusted publishers -> GitHub Actions,
-#   repository nolanbaxter/winding, workflow file release.yml.
+#   repository getlowarc/winding, workflow file release.yml.
 name: Release
 
 on:

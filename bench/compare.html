@@ -222,7 +222,7 @@ if (q.has('results')) {
 
 const SUITE = q.has('suite') ? Number(q.get('suite')) : -1;
 if (SUITE >= 0) panel.innerHTML = `<h1>Running ${SUITE + 1} of ${PLAN.length}</h1><p>${NAMES[q.get('scene')] ?? ''}: loading, then timing. Leave this window in front.</p>`;
-const WN = await import(FROM_FILE ? `https://cdn.jsdelivr.net/gh/nolanbaxter/winding@${WINDING_COMMIT}/src/winding.js` : '/src/winding.js');
+const WN = await import(FROM_FILE ? `https://cdn.jsdelivr.net/gh/getlowarc/winding@${WINDING_COMMIT}/src/winding.js` : '/src/winding.js');
 const SCENE = q.get('scene') ?? 'sponza';
 const ROUNDS = Number(q.get('rounds') ?? 8);
 const SHOT = q.get('shot');
