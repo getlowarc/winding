@@ -78,8 +78,14 @@ const nowMs = () => (globalThis.performance?.now?.() ?? Date.now());
  * work, so there is a floor below which parallelism can only lose. This is that
  * floor. Raise it if the per-item work is trivial, lower it if each item is
  * expensive -- it is a property of the JOB, not of the machine.
+ *
+ * Measured again on a crowd: 300 walkers, 14,400 transforms all moving, in
+ * depth levels of about 2,400. At 4,096 no level went to the workers, and the
+ * compose was 1.92 ms a frame on one thread; at 1,024, 1.20; at 512, 1.31,
+ * where waking for the smaller levels starts to cost more than it saves. The
+ * levels of 810 transforms above all stay under it, inline as they were.
  */
-const DEFAULT_PARALLEL_THRESHOLD = 4096;
+const DEFAULT_PARALLEL_THRESHOLD = 1024;
 
 /** Jobs are identified by a small integer so the control block stays an Int32Array. */
 export const JOB_NONE = 0;

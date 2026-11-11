@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A crowd's transforms are composed on the workers.** The job system kept any dispatch under
+  4,096 items on one thread, and the transform hierarchy is dispatched a depth level at a time, so
+  a crowd of characters built from parts -- 300 walkers, 14,400 transforms in levels of about
+  2,400 -- never reached the workers at all. The threshold is 1,024 now, measured on that crowd:
+  its compose went from 1.92 to 1.20 ms a frame. Smaller scenes stay on one thread as they were.
+
 - **The sun's shadows check what moved once a light, not once a cascade.** Each cascade asked
   whether any box that moved this frame reached it, projecting every box's eight corners through
   its matrix; with everything moving, that was every box, four times. Now each box is taken into
