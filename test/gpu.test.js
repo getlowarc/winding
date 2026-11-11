@@ -4364,6 +4364,63 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     }
   });
 
+  await step('shadows cast from the depth-only indices are the shadows cast from the vertices themselves', async () => {
+    // The demo's flat-shaded cubes: each corner three vertices, one a face.
+    // Their casters drawn from indices that share the corners (geometry.js)
+    // must give the frame drawn from the mesh's own, pixel for pixel -- and
+    // the two index buffers must differ, or the check proves nothing.
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '160px';
+    canvas.style.height = '120px';
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas, { antialias: false, post: { strength: 0 } });
+    probe.gpu.device.pushErrorScope('validation');
+    try {
+      probe.gpu.resize(160, 120);
+      const asset = await probe.load(await buildDemoGLB({ arms: 6, glass: 0 }));
+      const cam = new Camera({ fovY: 1, near: 0.1 });
+      cam.position.set([6, 5, 7]);
+      cam.target.set([0, 0.5, 0]);
+      const geometry = probe.renderer.geometry;
+      const read = async (buffer) => {
+        const out = probe.gpu.device.createBuffer({ size: buffer.size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const encoder = probe.gpu.device.createCommandEncoder();
+        encoder.copyBufferToBuffer(buffer, 0, out, 0, buffer.size);
+        probe.gpu.queue.submit([encoder.finish()]);
+        await out.mapAsync(GPUMapMode.READ);
+        const words = new Uint32Array(out.getMappedRange().slice(0));
+        out.destroy();
+        return words;
+      };
+      const own = await read(geometry.indexBuffer), depth = await read(geometry.depthIndexBuffer);
+      let shared = 0;
+      for (let i = 0; i < own.length; i++) if (own[i] !== depth[i]) shared++;
+      if (shared === 0) throw new Error('no index was shared: the check proves nothing');
+      const draw = async () => {
+        const scene = probe.createScene();
+        scene.add(asset);
+        scene.addLight({ type: 'directional', direction: [-0.5, -0.8, -0.3], intensity: 3 });
+        await probe.prepare(scene, cam);
+        probe.renderFrame(scene, cam);
+        return probe.gpu.readPixels();
+      };
+      const sharedFrame = await draw();
+      const kept = geometry.depthIndexBuffer;
+      geometry.depthIndexBuffer = geometry.indexBuffer;
+      let ownFrame;
+      try { ownFrame = await draw(); } finally { geometry.depthIndexBuffer = kept; }
+      const error = await probe.gpu.device.popErrorScope();
+      if (error) throw error;
+      let differ = 0;
+      for (let i = 0; i < sharedFrame.length; i++) if (sharedFrame[i] !== ownFrame[i]) differ++;
+      if (differ > 0) throw new Error(`${differ} bytes differ between shadows from shared corners and from the mesh's own`);
+      return `${shared} of ${own.length} indices name a shared corner; the frame is the same`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
+  });
+
   await step('a cascade culled caster by caster casts the shadows a batch at a time casts', async () => {
     // Sixty-four plates of one mesh, one batch, spread wider than the near
     // cascades reach: those draw only the plates the GPU kept for them. The

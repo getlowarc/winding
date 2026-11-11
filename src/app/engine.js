@@ -667,7 +667,8 @@ export class Winding {
           const skin = primitive.jointIndices
             ? new Uint8Array(packSkinVertices(primitive.jointIndices, primitive.jointWeights, primitive.vertexCount))
             : null;
-          const at = this.renderer.geometry.allocate(primitive.vertices, primitive.indices, skin);
+          // A morphed one's depth-only draws keep its own vertices: see geometry.js.
+          const at = this.renderer.geometry.allocate(primitive.vertices, primitive.indices, skin, !primitive.morph);
           built.baseVertex = at.baseVertex;
           built.firstIndex = at.firstIndex;
           built.placed = true;
@@ -718,7 +719,7 @@ export class Winding {
       const skin = primitive.jointIndices
         ? new Uint8Array(packSkinVertices(primitive.jointIndices, primitive.jointWeights, primitive.vertexCount))
         : null;
-      this.renderer.geometry.writeAt(built.baseVertex, built.firstIndex, primitive.vertices, primitive.indices, skin);
+      this.renderer.geometry.writeAt(built.baseVertex, built.firstIndex, primitive.vertices, primitive.indices, skin, !primitive.morph);
       if (primitive.morph) this.renderer.morph.writeAt(built.morphBase, primitive.morph.deltas);
     }));
     return into;
