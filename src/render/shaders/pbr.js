@@ -1151,34 +1151,65 @@ fn localVisibility(light : Light, worldPosition : vec3<f32>, normal : vec3<f32>,
   let fromLight = worldPosition - light.positionRadius.xyz;
   var layer = first;
   var along = 0.0;
-  if (light.directionCone.w > 1.5) {
+  // A point light's face, as an axis (0 x, 1 y, 2 z) and its sign.
+  var axis = 0;
+  var positive = true;
+  let cube = light.directionCone.w > 1.5;
+  if (cube) {
     let a = abs(fromLight);
     if (a.x >= a.y && a.x >= a.z) {
-      layer = first + select(1, 0, fromLight.x > 0.0);
+      positive = fromLight.x > 0.0;
       along = a.x;
     } else if (a.y >= a.z) {
-      layer = first + select(3, 2, fromLight.y > 0.0);
+      axis = 1;
+      positive = fromLight.y > 0.0;
       along = a.y;
     } else {
-      layer = first + select(5, 4, fromLight.z > 0.0);
+      axis = 2;
+      positive = fromLight.z > 0.0;
       along = a.z;
     }
+    layer = first + axis * 2 + select(1, 0, positive);
   } else {
     along = dot(fromLight, light.directionCone.xyz);
   }
 
-  let view = localViews[layer];
+  // tanHalf, near, size: the face's own, without its matrix.
+  let params = localViews[layer].params;
   let size = frame.shadowParams.w;
   let slope = clamp(1.0 - NoL, 0.0, 1.0);
-  let texelWorld = 2.0 * max(along, 0.0) * view.params.x / size;
+  let texelWorld = 2.0 * max(along, 0.0) * params.x / size;
   let biased = worldPosition + normal * texelWorld * frame.shadowParams.x * (1.0 + slope * 2.0);
 
-  let clip = view.viewProjection * vec4<f32>(biased, 1.0);
-  if (clip.w <= 0.0) { return 1.0; }
-  let ndc = clip.xyz / clip.w;
+  var ndc : vec3<f32>;
+  if (cube) {
+    // A cube face is a 90-degree view down its axis (shadows.js _localView:
+    // lookAt with +y up, or +z for the y faces, and the reverse-Z infinite
+    // projection), so where a point falls on it is two of its components over
+    // the third, and its depth is near over that third: no matrix to load or
+    // multiply, per light per pixel. Across and up, face by face:
+    // +x (z, y)  -x (-z, y)  +y (x, z)  -y (-x, z)  +z (-x, y)  -z (x, y).
+    let d = biased - light.positionRadius.xyz;
+    var across : f32;
+    var up : f32;
+    var depth : f32;
+    if (axis == 0) { depth = d.x; across = d.z; up = d.y; }
+    else if (axis == 1) { depth = d.y; across = d.x; up = d.z; }
+    else { depth = d.z; across = -d.x; up = d.y; }
+    // The negative faces look the other way: depth and across turn over, up does not.
+    if (!positive) { depth = -depth; across = -across; }
+    if (depth <= 0.0) { return 1.0; }
+    let scale = 1.0 / (params.x * depth);
+    ndc = vec3<f32>(across * scale, up * scale, params.y / depth);
+  } else {
+    // A spot's one view is aimed anywhere: through its matrix.
+    let clip = localViews[layer].viewProjection * vec4<f32>(biased, 1.0);
+    if (clip.w <= 0.0) { return 1.0; }
+    ndc = clip.xyz / clip.w;
+  }
   let uv = vec2<f32>(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
   if (any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0))) { return 1.0; }
-  if (SOFT_SHADOWS && view.params.z > 0.0) { return softLocal(layer, uv, ndc.z); }
+  if (SOFT_SHADOWS && params.z > 0.0) { return softLocal(layer, uv, ndc.z); }
 
   let texel = 1.0 / size;
   var total = 0.0;

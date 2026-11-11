@@ -1280,6 +1280,66 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report.join(', ');
   });
 
+  await step("a point light's shadow falls right on every face of its cube", async () => {
+    // The step above, turned six ways: the ground, the blocker and the light
+    // under one node, rotated so the blocker lies along +x, -x, +y, -y, +z and
+    // -z of the light, and the camera turned with them. Each is a different
+    // face of the cube, read by the shader with its own axes and signs. The
+    // blocker is off the axis, at (0.9, 1, 0.4) under the light at (0, 3, 0),
+    // so its shadow falls at (1.35, 0, 0.6): a face read with an axis flipped,
+    // or the two swapped as well, puts it at one of the mirrors of that point
+    // sampled here, all far enough from it to stay lit. (Swapped alone it
+    // lands on (0.6, 1.35), which the real shadow, wider than it looks, covers.)
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const block = await engine.load(buildFeatureGLB({ baseColorFactor: [0.2, 0.2, 0.2, 1] }));
+    const turn = (axis, angle) => { const q = [0, 0, 0, 1]; const s = Math.sin(angle / 2); return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(angle / 2)]; };
+    const rotate = (q, v) => {
+      const [x, y, z, w] = q;
+      const tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]);
+      return [v[0] + w * tx + y * tz - z * ty, v[1] + w * ty + z * tx - x * tz, v[2] + w * tz + x * ty - y * tx];
+    };
+    // Each turns the light's down, (0, -1, 0), onto the face's axis.
+    const faces = [
+      ['+x', turn([0, 0, 1], Math.PI / 2)], ['-x', turn([0, 0, 1], -Math.PI / 2)],
+      ['+y', turn([1, 0, 0], Math.PI)], ['-y', [0, 0, 0, 1]],
+      ['+z', turn([1, 0, 0], -Math.PI / 2)], ['-z', turn([1, 0, 0], Math.PI / 2)],
+    ];
+    const brightness = async (q, castShadow) => {
+      const scene = engine.createScene();
+      const root = scene.createNode().setRotation(q);
+      scene.add(ground, { parent: root }).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+      scene.add(block, { parent: root }).setAxisAngle([1, 0, 0], Math.PI / 2).setScale(0.35, 0.35, 1).setPosition(0.9, 1, 0.4);
+      scene.addLight({ parent: root, position: [0, 3, 0], intensity: 40, radius: 12, castShadow });
+      const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+      cam.position.set(rotate(q, [0, 6, 0.01]));
+      cam.target.set([0, 0, 0]);
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const { width, height } = engine.gpu;
+      // A point on the ground, turned with it, onto the screen.
+      const at = ([gx, gz]) => {
+        const [x, y, z] = rotate(q, [gx, 0, gz]), m = cam.viewProjection;
+        const w = m[3] * x + m[7] * y + m[11] * z + m[15];
+        const sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w) * 0.5 + 0.5;
+        const sy = 0.5 - ((m[1] * x + m[5] * y + m[9] * z + m[13]) / w) * 0.5;
+        const i = (Math.floor(sy * height) * width + Math.floor(sx * width)) * 4;
+        return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+      };
+      return { under: at([1.35, 0.6]), beside: [[-1.35, 0.6], [1.35, -0.6], [-1.35, -0.6], [-0.6, 1.35], [0.6, -1.35], [-0.6, -1.35]].map(at) };
+    };
+    const report = [];
+    for (const [name, q] of faces) {
+      const lit = await brightness(q, false);
+      const shadowed = await brightness(q, true);
+      if (!(shadowed.under < lit.under - 20)) throw new Error(`${name}: under the blocker ${lit.under.toFixed(0)} -> ${shadowed.under.toFixed(0)}, no shadow`);
+      shadowed.beside.forEach((v, k) => {
+        if (Math.abs(v - lit.beside[k]) > 2) throw new Error(`${name}: beside the blocker ${lit.beside[k].toFixed(0)} -> ${v.toFixed(0)}, shadow where nothing casts`);
+      });
+      report.push(`${name} ${lit.under.toFixed(0)} -> ${shadowed.under.toFixed(0)}`);
+    }
+    return report.join(', ');
+  });
+
   await step('a light with a size casts soft shadows: sharp by the caster, wider the farther it falls, and a switch turns them off', async () => {
     const canvas = document.createElement('canvas');
     canvas.style.width = '200px';
@@ -1801,6 +1861,62 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
       if (!probe.renderer.upscaler.scaled) throw new Error('the frame after the scaler built was not scaled');
       if (!probe._idle(scene, cam)) throw new Error('a still scene at a lower resolution never rests: every frame is drawn again');
       return 'waits while the scaler builds, rests once it has';
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
+  });
+
+  await step('a moving crowd draws the same with its boxes and draw data written on the workers as here', async () => {
+    // 2,500 tinted cubes, some hidden, every one moved and turned each frame: past
+    // the job system's threshold, so their world boxes and draw data are written across
+    // the workers (scene/renderableJob.js). The same two frames drawn with
+    // everything on this thread must come out pixel for pixel the same.
+    const canvas = document.createElement('canvas');
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas, { antialias: false });
+    try {
+      probe.gpu.resize(256, 256);
+      const scene = probe.createScene();
+      const asset = await probe.load(buildFeatureGLB({ baseColorFactor: [1, 1, 1, 1] }));
+      const cubes = [];
+      for (let i = 0; i < 2500; i++) {
+        const cube = scene.add(asset).setScale(0.3, 0.3, 0.3);
+        cube.setTint([(i % 7) / 7, (i % 11) / 11, (i % 13) / 13]);
+        // Some hidden: their cull bounds carry it, written on the workers with the rest.
+        if (i % 17 === 0) cube.setVisible(false);
+        cubes.push(cube);
+      }
+      const cam = new Camera({ fovY: 1.0, near: 0.1 });
+      cam.position.set([0, 0, 40]);
+      cam.target.set([0, 0, 0]);
+      const pose = (t) => cubes.forEach((cube, i) => cube
+        .setPosition((i % 50) - 24.5 + Math.sin(t + i) * 0.3, Math.floor(i / 50) - 24.5, Math.cos(t * 2 + i))
+        .setEuler(t + i * 0.1, t * 0.5, 0));
+      const draw = async () => {
+        pose(0); probe.renderFrame(scene, cam);
+        pose(1); probe.renderFrame(scene, cam);
+        return probe.gpu.readPixels();
+      };
+      // Workers check in once the first frame has handed them their columns.
+      pose(0); probe.renderFrame(scene, cam);
+      if (!(await probe.jobs.ready())) throw new Error(`no workers checked in: isolated ${globalThis.crossOriginIsolated}, parallel ${probe.jobs.parallel}, ${probe.jobs.readyCount} of ${probe.jobs.workerCount} ready`);
+      const before = probe.jobs.stats.parallel;
+      const wide = await draw();
+      const went = probe.jobs.stats.parallel - before;
+      if (went < 4) throw new Error(`${went} dispatches went wide over two frames: transforms, boxes and matrices each should have`);
+      const threshold = probe.jobs.parallelThreshold;
+      probe.jobs.parallelThreshold = Infinity;
+      const here = await draw();
+      probe.jobs.parallelThreshold = threshold;
+      let differ = 0, lit = 0;
+      for (let i = 0; i < wide.length; i++) {
+        if (wide[i] !== here[i]) differ++;
+        if ((i & 3) === 0 && wide[i] > 0) lit++;
+      }
+      if (lit < 1000) throw new Error(`only ${lit} lit pixels: the crowd is not in view`);
+      if (differ > 0) throw new Error(`${differ} bytes differ between the workers' frame and this thread's`);
+      return `${went} dispatches wide, ${lit} lit pixels, identical`;
     } finally {
       probe.destroy();
       canvas.remove();
@@ -4242,6 +4358,69 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
       const asIfGone = differ(hidden, without), asBefore = differ(back, shown);
       if (asIfGone > 0 || asBefore > 0) throw new Error(`hidden: ${asIfGone} pixels differ from the scene without it; shown again: ${asBefore} from before`);
       return `hidden draws the scene without it, shown again the scene with it, ${shown.length / 4} pixels (${differ(shown, without)} are the group's)`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
+  });
+
+  await step('shadows cast from the depth-only indices are the shadows cast from the vertices themselves', async () => {
+    // The demo's flat-shaded cubes: each corner three vertices, one a face.
+    // Their casters drawn from indices that share the corners (geometry.js)
+    // must give the frame drawn from the mesh's own, pixel for pixel -- and
+    // the two index buffers must differ, or the check proves nothing. Two
+    // copies of the file, so each one's hub is a one-object batch of its own,
+    // and the two are merged (merged.js): their shadow lists are read from
+    // the same indices.
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '160px';
+    canvas.style.height = '120px';
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas, { antialias: false, post: { strength: 0 } });
+    probe.gpu.device.pushErrorScope('validation');
+    try {
+      probe.gpu.resize(160, 120);
+      const asset = await probe.load(await buildDemoGLB({ arms: 6, glass: 0 }));
+      const other = await probe.load(await buildDemoGLB({ arms: 0, glass: 0 }));
+      const cam = new Camera({ fovY: 1, near: 0.1 });
+      cam.position.set([6, 5, 7]);
+      cam.target.set([0, 0.5, 0]);
+      const geometry = probe.renderer.geometry;
+      const read = async (buffer) => {
+        const out = probe.gpu.device.createBuffer({ size: buffer.size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+        const encoder = probe.gpu.device.createCommandEncoder();
+        encoder.copyBufferToBuffer(buffer, 0, out, 0, buffer.size);
+        probe.gpu.queue.submit([encoder.finish()]);
+        await out.mapAsync(GPUMapMode.READ);
+        const words = new Uint32Array(out.getMappedRange().slice(0));
+        out.destroy();
+        return words;
+      };
+      const own = await read(geometry.indexBuffer), depth = await read(geometry.depthIndexBuffer);
+      let shared = 0;
+      for (let i = 0; i < own.length; i++) if (own[i] !== depth[i]) shared++;
+      if (shared === 0) throw new Error('no index was shared: the check proves nothing');
+      const draw = async () => {
+        const scene = probe.createScene();
+        scene.add(asset);
+        scene.add(other).setPosition(-2.5, 0, 1.5);
+        scene.addLight({ type: 'directional', direction: [-0.5, -0.8, -0.3], intensity: 3 });
+        await probe.prepare(scene, cam);
+        probe.renderFrame(scene, cam);
+        if (!(probe.renderer.gpu.merged?.groupCount > 0)) throw new Error('nothing was merged: the merged shadow lists go unchecked');
+        return probe.gpu.readPixels();
+      };
+      const sharedFrame = await draw();
+      const kept = geometry.depthIndexBuffer;
+      geometry.depthIndexBuffer = geometry.indexBuffer;
+      let ownFrame;
+      try { ownFrame = await draw(); } finally { geometry.depthIndexBuffer = kept; }
+      const error = await probe.gpu.device.popErrorScope();
+      if (error) throw error;
+      let differ = 0;
+      for (let i = 0; i < sharedFrame.length; i++) if (sharedFrame[i] !== ownFrame[i]) differ++;
+      if (differ > 0) throw new Error(`${differ} bytes differ between shadows from shared corners and from the mesh's own`);
+      return `${shared} of ${own.length} indices name a shared corner; the frame is the same, ${probe.renderer.gpu.merged.groupCount} merged groups among it`;
     } finally {
       probe.destroy();
       canvas.remove();

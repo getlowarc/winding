@@ -94,13 +94,37 @@ export class BoxList {
   }
 
   /**
-   * Does any box reach into the volume an orthographic view-projection
-   * `matrix` (column-major, at `offset`) draws: x and y in [-1, 1], depth in
-   * [0, 1]? Its eight corners' extent in clip space, against that.
+   * Which of `count` boxes in a light's space, from `first` in `boxes` (x0, x1,
+   * y0, y1, z0, z1 each), any of these boxes reaches into: a bit each. `view`
+   * takes world space to the light's, rigidly, as every cascade of a light
+   * shares it -- so each box is taken there once, as its centre and its extent
+   * (|R| times its half-size), however many cascades it is tested against,
+   * where projecting its eight corners for each cascade was 1.7 ms a frame for
+   * 10,000 moving cubes. The same box the corners give, to rounding, which a
+   * margin of a millionth of the cascade's width covers on the side of
+   * redrawing.
    */
-  touchesOrtho(matrix, offset = 0) {
-    for (let k = 0; k < this.count * 6; k += 6) if (boxInOrtho(this.data, k, matrix, offset)) return true;
-    return false;
+  touching(view, boxes, first, count) {
+    const d = this.data, v = view, all = (1 << count) - 1;
+    const r0 = Math.abs(v[0]), r1 = Math.abs(v[4]), r2 = Math.abs(v[8]);
+    const r3 = Math.abs(v[1]), r4 = Math.abs(v[5]), r5 = Math.abs(v[9]);
+    const r6 = Math.abs(v[2]), r7 = Math.abs(v[6]), r8 = Math.abs(v[10]);
+    let touched = 0;
+    for (let k = 0; k < this.count * 6 && touched !== all; k += 6) {
+      const mx = (d[k] + d[k + 3]) * 0.5, my = (d[k + 1] + d[k + 4]) * 0.5, mz = (d[k + 2] + d[k + 5]) * 0.5;
+      const hx = (d[k + 3] - d[k]) * 0.5, hy = (d[k + 4] - d[k + 1]) * 0.5, hz = (d[k + 5] - d[k + 2]) * 0.5;
+      const cx = v[0] * mx + v[4] * my + v[8] * mz + v[12], ex = r0 * hx + r1 * hy + r2 * hz;
+      const cy = v[1] * mx + v[5] * my + v[9] * mz + v[13], ey = r3 * hx + r4 * hy + r5 * hz;
+      const cz = v[2] * mx + v[6] * my + v[10] * mz + v[14], ez = r6 * hx + r7 * hy + r8 * hz;
+      for (let c = 0; c < count; c++) {
+        if ((touched >> c) & 1) continue;
+        const b = (first + c) * 6, margin = (boxes[b + 1] - boxes[b]) * 1e-6;
+        if (cx + ex >= boxes[b] - margin && cx - ex <= boxes[b + 1] + margin
+          && cy + ey >= boxes[b + 2] - margin && cy - ey <= boxes[b + 3] + margin
+          && cz + ez >= boxes[b + 4] - margin && cz - ez <= boxes[b + 5] + margin) touched |= 1 << c;
+      }
+    }
+    return touched;
   }
 
   /**

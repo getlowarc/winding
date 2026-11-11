@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-11-11
+
+**Crowds and shadows, cheaper.** A crowd's moving parts -- their transforms, world boxes, draw
+data and cull bounds -- are worked out on the job system's workers, and shadows from flat-shaded
+meshes transform about a quarter of the vertices: 300 low-poly walkers' sun shadows went from 3.4
+to 2.4 ms of GPU time, with the same pixels.
+
+### Changed
+
+- **Shadows from flat-shaded meshes transform a fraction of the vertices.** A flat-shaded mesh
+  repeats every corner once for each face that meets there, each copy with its own normal, and a
+  shadow pass, which reads only positions, transformed every copy. Each primitive now also has
+  indices that name one vertex per corner (with the same joints and weights, when skinned) for its
+  depth-only draws: the same triangles, so the same shadows -- checked to the pixel -- from about a
+  quarter of the vertices on a low-poly character; meshes merged into one draw (a level of distinct
+  meshes) cast from the same indices. On Iris Xe, the sun's four cascades: 300 low-poly walkers from
+  3.4 to 2.4 ms, the GPU frame from 7.0 to 6.2 ms; a town of boxes from 2.35 to 2.0 ms; the siege
+  from 3.0 to 2.6 ms. Smooth meshes, which share their corners already, draw as they did; morphed
+  ones, and those whose shadow takes its shape from alpha, keep their own vertices. The cost is a
+  second copy of the index buffer, and at load about 26 ms for a 540,000-vertex flat mesh.
+
+- **A crowd's world boxes, draw data and cull bounds are written on the workers.** Only the
+  transforms were. Every moved renderable's box, its whole draw data -- matrices, tint, where its
+  joints begin -- and its cull bounds, LOD sphere and hidden flag included, are now written across the
+  job system's threads too, past the same 1,024-item threshold, the same code either way. What stays on
+  the main thread is the morph words of what is morphed, the upload runs and the upload itself.
+  Checked to the bit against one thread, and to the pixel on a moving crowd of 2,500, some hidden.
+  300 walkers, 9,000 moving renderables, a 16-thread laptop on mains, one thread against the workers
+  in the same page: those from 1.0 to 0.65 ms a frame, and the renderer's CPU time from 3.7 to 3.4 ms
+  on average -- less than the jobs save, as the main thread then reads what other cores wrote, and the
+  upload alone is about 0.05 ms slower for it. The slower the CPU the more it pays: the same laptop
+  throttled on battery went from 11.2 to 9.4 ms a frame. 4,500 renderables: 0.87 to 0.59 ms; 1,500:
+  no slower.
+
+- **A crowd's transforms are composed on the workers.** The job system kept any dispatch under
+  4,096 items on one thread, and the transform hierarchy is dispatched a depth level at a time, so
+  a crowd of characters built from parts -- 300 walkers, 14,400 transforms in levels of about
+  2,400 -- never reached the workers at all. The threshold is 1,024 now, measured on that crowd:
+  its compose went from 1.92 to 1.20 ms a frame. Smaller scenes stay on one thread as they were.
+
+- **The sun's shadows check what moved once a light, not once a cascade.** Each cascade asked
+  whether any box that moved this frame reached it, projecting every box's eight corners through
+  its matrix; with everything moving, that was every box, four times. Now each box is taken into
+  the light's space once, as its centre and extent, and tested against all of the light's cascades
+  there, which is the box its corners give. 10,000 moving cubes: the shadow fit from about 1.2 to
+  0.4 ms of CPU a frame.
+
+- **A point light's shadow is looked up without its face's matrix.** Each pixel lit by a shadowed
+  point light loaded that cube face's view matrix and multiplied by it, light by light; a face is a
+  fixed 90-degree view down an axis, so where a point falls on it is two of its components over the
+  third. Measured to the pixel against the matrix: no pixel differs. A dungeon of 36 shadowed
+  torches: the forward pass from 16.5 to 14.4 ms on Iris Xe. Spots still go through their matrix.
+
 ## [1.9.1] - 2026-11-02
 
 **A new home, and cheaper torches.** Winding lives in the LowArc organisation on GitHub now, and a
@@ -2625,7 +2678,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.2...HEAD
+[1.9.2]: https://github.com/getlowarc/winding/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/getlowarc/winding/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/getlowarc/winding/compare/v1.7.0...v1.8.0

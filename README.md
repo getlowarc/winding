@@ -140,7 +140,7 @@ import are the files in this repository.
 
 ```html
 <script type="module">
-  import { Winding, Camera } from 'https://cdn.jsdelivr.net/npm/winding-engine@1.9.1/src/winding.js';
+  import { Winding, Camera } from 'https://cdn.jsdelivr.net/npm/winding-engine@1.9.2/src/winding.js';
 </script>
 ```
 
@@ -165,8 +165,8 @@ completion and hover help.
 <script type="importmap">
 {
   "imports": {
-    "winding-engine": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.1/src/winding.js",
-    "winding-engine/": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.1/src/"
+    "winding-engine": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.2/src/winding.js",
+    "winding-engine/": "https://cdn.jsdelivr.net/npm/winding-engine@1.9.2/src/"
   }
 }
 </script>
@@ -331,6 +331,7 @@ than budgets. Two limits remain hard, and both are derived rather than chosen: 2
 index field of a handle) and 4096 materials (the material field of a sort key).
 
 **A job system.** Atomic-cursor parallel-for across workers with the main thread participating.
+It composes the transform hierarchy, then each moved renderable's world box, draw data and cull bounds.
 Requires cross-origin isolation for `SharedArrayBuffer`; without it, it runs inline and produces
 identical results, so the engine works on static hosting that cannot set headers.
 

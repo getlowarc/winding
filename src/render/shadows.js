@@ -894,6 +894,8 @@ export class ShadowMaps {
     const fits = new Float64Array(capacity * 5);
     fits.set(this._fits ?? []);
     this._fits = fits;
+    // And the box each layer draws, in the light's space: x0, x1, y0, y1, z0, z1.
+    this._lightBoxes = new Float64Array(capacity * 6);
     for (let layer = this._executors.length; layer < capacity; layer++) {
       this._pieces.push({ count: 0, rects: new Int32Array(MAX_PIECES * 4), cull: new Float32Array(MAX_PIECES * 16) });
       this._executors.push((pass) => this._encodeCascade(pass, layer));
@@ -1287,9 +1289,12 @@ export class ShadowMaps {
       vec3Normalize(this._lightDirection, this._lightDirection);
       this._lightBasis();
       const depth = sceneMin === null ? null : this._sceneDepth(sceneMin, sceneMax);
+      for (let c = 0; c < count; c++) this._fitCascade(lights * count + c, c, depth);
+      // Which of this light's cascades something moved in, all of them asked at once.
+      const touched = changes === null || changes.all || changes.boxes.count === 0 ? 0
+        : changes.boxes.touching(this._lightView, this._lightBoxes, lights * count, count);
       for (let c = 0; c < count; c++) {
-        this._fitCascade(lights * count + c, c, depth);
-        const mode = this._redrawCascade(lights * count + c, scene.directionalEntity[d], changes);
+        const mode = this._redrawCascade(lights * count + c, scene.directionalEntity[d], changes, (touched >> c) & 1);
         if (mode === FULL) drawn++;
         else if (mode === SCROLL) scrolled++;
       }
@@ -1370,13 +1375,12 @@ export class ShadowMaps {
    * was, and that strip is all that is drawn. Sponza at 720p on Iris Xe,
    * walking: each redraw of a near cascade was 1.5 to 1.9 ms.
    */
-  _redrawCascade(layer, entity, changes) {
+  _redrawCascade(layer, entity, changes, touched) {
     if (this.cascadeRedraw.length < this.cascadeCapacity) {
       const grown = new Uint8Array(this.cascadeCapacity);
       grown.set(this.cascadeRedraw);
       this.cascadeRedraw = grown;
     }
-    const at = layer * 16;
     const f = layer * 5;
     const fits = this._fits;
     const cached = this._cascadeCache[layer];
@@ -1384,7 +1388,7 @@ export class ShadowMaps {
     let mode = changes === null || changes.all || cached === undefined || cached.entity !== entity
       || cached.fit[2] !== fits[f + 2] || cached.fit[3] !== fits[f + 3] || cached.fit[4] !== fits[f + 4]
       || cached.direction[0] !== d[0] || cached.direction[1] !== d[1] || cached.direction[2] !== d[2]
-      || changes.boxes.touchesOrtho(this.matrices, at) ? FULL : KEEP;
+      || touched === 1 ? FULL : KEEP;
     // Grid steps the box moved, then texels: u runs with light-space x, v against y.
     const du = mode === FULL ? 0 : (fits[f] - cached.fit[0]) * CASCADE_SNAP;
     const dv = mode === FULL ? 0 : -(fits[f + 1] - cached.fit[1]) * CASCADE_SNAP;
@@ -1564,6 +1568,12 @@ export class ShadowMaps {
       snappedY - half, snappedY + half,
       nearDistance, Math.max(farDistance, nearDistance + 0.02),
     );
+
+    // What that projection draws, back in the light's space: what a moved box is tested against.
+    const box = layer * 6, far = Math.max(farDistance, nearDistance + 0.02);
+    this._lightBoxes[box] = snappedX - half; this._lightBoxes[box + 1] = snappedX + half;
+    this._lightBoxes[box + 2] = snappedY - half; this._lightBoxes[box + 3] = snappedY + half;
+    this._lightBoxes[box + 4] = -far; this._lightBoxes[box + 5] = -nearDistance;
 
     const offset = layer * 16;
     mat4Multiply(this.matrices, this._projection, this._lightView, offset, 0, 0);

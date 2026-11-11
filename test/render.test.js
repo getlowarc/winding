@@ -28,7 +28,7 @@ import { Scene } from '../src/scene/scene.js';
 import { GpuDriven, DRAW_DATA_BYTES, CULL_PHASES, writeChanged } from '../src/render/gpudriven.js';
 import { SkinPalette } from '../src/render/skin.js';
 import { MorphStore } from '../src/render/morph.js';
-import { GeometryArena } from '../src/render/geometry.js';
+import { GeometryArena, depthIndices } from '../src/render/geometry.js';
 import { PipelineCache } from '../src/rhi/pipeline.js';
 import { createBuffer, storageCapacity } from '../src/rhi/buffer.js';
 import { grownCapacity } from '../src/core/grow.js';
@@ -1714,7 +1714,43 @@ test('primitives land one after another, a freed range is reused, and growing ca
   const d = arena.allocate(...mesh(6, 12));
   assert.equal(d.baseVertex, 7);
   assert.ok(arena.vertexCapacity >= 13 && arena.indexCapacity >= 21 && arena.revision > revision, 'grown');
-  assert.deepEqual(copies, [['geometry-vertices', 7 * 60], ['geometry-positions', 7 * 12], ['geometry-indices', 9 * 4]], 'only what had been written');
+  assert.deepEqual(copies, [['geometry-vertices', 7 * 60], ['geometry-positions', 7 * 12], ['geometry-indices', 9 * 4],
+    ['geometry-depth-indices', 9 * 4]], 'only what had been written');
+});
+
+test('depth-only indices share a corner between faces, and only where all a depth pass reads of it is the same', () => {
+  // A flat cube: 24 vertices, 4 a face, at 8 corners. Each index must name a
+  // vertex at the same position, and the first one there.
+  const corners = [], vertices = new Float32Array(24 * 15), indices = [];
+  for (let f = 0; f < 6; f++) {
+    const axis = f >> 1, sign = f & 1 ? -1 : 1;
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const p = [0, 0, 0];
+      p[axis] = sign; p[(axis + 1) % 3] = a; p[(axis + 2) % 3] = b;
+      const v = corners.length;
+      corners.push(p);
+      vertices.set(p, v * 15);
+      vertices.set([0, 0, 0].map((_, k) => (k === axis ? sign : 0)), v * 15 + 3);
+    }
+    const o = f * 4;
+    indices.push(o, o + 1, o + 2, o, o + 2, o + 3);
+  }
+  const flat = Uint32Array.from(indices);
+  const depth = depthIndices(vertices, flat);
+  assert.equal(new Set(depth).size, 8, 'the eight corners');
+  for (let i = 0; i < flat.length; i++) {
+    assert.deepEqual(corners[depth[i]], corners[flat[i]], `index ${i} moved its corner`);
+    assert.equal(depth[i], corners.findIndex((c) => c.join() === corners[flat[i]].join()), 'the first vertex there');
+  }
+  // Skinned: two vertices at one place with different weights stay apart.
+  const skin = new Uint8Array(24 * 24);
+  new Float32Array(skin.buffer)[corners.findIndex((c) => c.join() === '1,-1,-1') * 6 + 2] = 1;
+  assert.equal(new Set(depthIndices(vertices, flat, skin)).size, 9, 'a corner whose first vertex has its own weights keeps a second');
+  // Nothing shared: the indices themselves, not a copy.
+  const lone = new Float32Array(3 * 15);
+  lone.set([0, 0, 0], 0); lone.set([1, 0, 0], 15); lone.set([0, 1, 0], 30);
+  const tri = Uint32Array.of(0, 1, 2);
+  assert.equal(depthIndices(lone, tri), tri);
 });
 
 console.log('\nmorph arena');

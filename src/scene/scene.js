@@ -26,7 +26,8 @@ import {
   mat4Create, mat4Copy, mat4Invert, mat4Multiply, mat4FromQuatPosScale, mat4Decompose,
 } from '../core/math/mat4.js';
 import { quatCreate, quatLookAlong } from '../core/math/quat.js';
-import { grownCapacity, growArray } from '../core/grow.js';
+import { grownCapacity, growArray, growShared } from '../core/grow.js';
+import { sharedFloat32Array, sharedInt32Array, sharedUint32Array, sharedUint8Array } from '../core/shared.js';
 import { checkOptions } from '../core/options.js';
 
 const DEFAULT_CAPACITY = 4096;
@@ -657,26 +658,27 @@ export class Scene {
     this._tintAt = new Float32Array(0);
     this._tintMoved = new Uint8Array(0);
     this._tintDirty = false;
-    this.renderableTint = new Uint32Array(renderableCapacity * 3);
+    // Shared, as the boxes and matrix slots are: the workers write draw data from it (renderableJob.js).
+    this.renderableTint = sharedUint32Array(renderableCapacity * 3);
     this.tintChanged = [];
     this._hiddenSelfCount = 0;
     this._visibilityDirty = false;
     /** Per renderable: hidden, as last worked out; how many are; and which changed this frame, for the renderer. */
-    this.renderableHidden = new Uint8Array(renderableCapacity);
+    this.renderableHidden = sharedUint8Array(renderableCapacity);
     this.hiddenRenderables = 0;
     this.visibilityChanged = [];
     this.renderableEntity = new Uint32Array(renderableCapacity);
     /** Which transform slot each renderable reads its world matrix from. */
-    this.renderableMatrixSlot = new Uint32Array(renderableCapacity);
+    this.renderableMatrixSlot = sharedUint32Array(renderableCapacity);
     this.renderableMaterial = new Uint16Array(renderableCapacity);
     /** Primitive descriptors: GPU buffers + index count. Held, never called. */
     this.renderablePrimitive = new Array(renderableCapacity);
 
     /** Index into this.skins, or -1: which palette a renderable reads. */
-    this.renderableSkin = new Int32Array(renderableCapacity).fill(-1);
+    this.renderableSkin = sharedInt32Array(renderableCapacity).fill(-1);
 
     /** Index into this.morphs, or -1: whose weights deform this renderable. */
-    this.renderableMorph = new Int32Array(renderableCapacity).fill(-1);
+    this.renderableMorph = sharedInt32Array(renderableCapacity).fill(-1);
     /**
      * How far each of this renderable's morph targets reaches, or null.
      *
@@ -694,14 +696,17 @@ export class Scene {
      * space, centre and radius; and the screen coverage this renderable
      * draws between, [lowest, highest).
      */
-    this.renderableLodSlot = new Int32Array(renderableCapacity).fill(-1);
-    this.renderableLodSphere = new Float32Array(renderableCapacity * 4);
-    this.renderableCoverage = new Float32Array(renderableCapacity * 2);
+    this.renderableLodSlot = sharedInt32Array(renderableCapacity).fill(-1);
+    this.renderableLodSphere = sharedFloat32Array(renderableCapacity * 4);
+    this.renderableCoverage = sharedFloat32Array(renderableCapacity * 2);
 
-    this.localMin = new Float32Array(renderableCapacity * 3);
-    this.localMax = new Float32Array(renderableCapacity * 3);
-    this.worldMin = new Float32Array(renderableCapacity * 3);
-    this.worldMax = new Float32Array(renderableCapacity * 3);
+    // Shared memory where the page has it: the job system's workers compute
+    // world boxes into these (renderableJob.js). Replaced when they grow, so
+    // the renderer publishes them again (Renderer._renderableColumns).
+    this.localMin = sharedFloat32Array(renderableCapacity * 3);
+    this.localMax = sharedFloat32Array(renderableCapacity * 3);
+    this.worldMin = sharedFloat32Array(renderableCapacity * 3);
+    this.worldMax = sharedFloat32Array(renderableCapacity * 3);
 
     // --- lighting -----------------------------------------------------------
     // Plain mutable fields: they are per-scene data the renderer reads when it
@@ -1101,25 +1106,25 @@ export class Scene {
     const capacity = grownCapacity(this.renderableCapacity, needed);
 
     this.renderableEntity = growArray(this.renderableEntity, capacity);
-    this.renderableMatrixSlot = growArray(this.renderableMatrixSlot, capacity);
+    this.renderableMatrixSlot = growShared(this.renderableMatrixSlot, capacity, sharedUint32Array);
     this.renderableMaterial = growArray(this.renderableMaterial, capacity);
     this.renderablePrimitive.length = capacity;
 
-    this.renderableSkin = growArray(this.renderableSkin, capacity);
-    this.renderableMorph = growArray(this.renderableMorph, capacity);
+    this.renderableSkin = growShared(this.renderableSkin, capacity, sharedInt32Array);
+    this.renderableMorph = growShared(this.renderableMorph, capacity, sharedInt32Array);
     this.renderableMorphExtent.length = capacity;
     this.renderableMorphPad = growArray(this.renderableMorphPad, capacity);
-    this.renderableLodSlot = growArray(this.renderableLodSlot, capacity);
-    this.renderableHidden = growArray(this.renderableHidden, capacity);
-    this.renderableTint = growArray(this.renderableTint, capacity, 3);
-    this.renderableLodSphere = growArray(this.renderableLodSphere, capacity, 4);
-    this.renderableCoverage = growArray(this.renderableCoverage, capacity, 2);
-    this.localMin = growArray(this.localMin, capacity, 3);
-    this.localMax = growArray(this.localMax, capacity, 3);
+    this.renderableLodSlot = growShared(this.renderableLodSlot, capacity, sharedInt32Array);
+    this.renderableHidden = growShared(this.renderableHidden, capacity, sharedUint8Array);
+    this.renderableTint = growShared(this.renderableTint, capacity, sharedUint32Array, 3);
+    this.renderableLodSphere = growShared(this.renderableLodSphere, capacity, sharedFloat32Array, 4);
+    this.renderableCoverage = growShared(this.renderableCoverage, capacity, sharedFloat32Array, 2);
+    this.localMin = growShared(this.localMin, capacity, sharedFloat32Array, 3);
+    this.localMax = growShared(this.localMax, capacity, sharedFloat32Array, 3);
     // World bounds are recomputed from local every time they are read, so these
     // only need the room, not the contents.
-    this.worldMin = growArray(this.worldMin, capacity, 3);
-    this.worldMax = growArray(this.worldMax, capacity, 3);
+    this.worldMin = growShared(this.worldMin, capacity, sharedFloat32Array, 3);
+    this.worldMax = growShared(this.worldMax, capacity, sharedFloat32Array, 3);
 
     this.renderableCapacity = capacity;
   }
