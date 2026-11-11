@@ -27,6 +27,7 @@ import { parseHDR } from '../render/hdr.js';
 import { Renderer, RenderTarget } from '../render/renderer.js';
 import { Splats } from '../render/splats.js';
 import { openSurface } from '../render/shadows.js';
+import { ALPHA_OPAQUE } from '../render/material.js';
 import { chunkBoxes } from '../scene/bounds.js';
 import { readSplats } from '../scene/splats.js';
 import { GLTFTextures } from '../render/textures.js';
@@ -667,8 +668,7 @@ export class Winding {
           const skin = primitive.jointIndices
             ? new Uint8Array(packSkinVertices(primitive.jointIndices, primitive.jointWeights, primitive.vertexCount))
             : null;
-          // A morphed one's depth-only draws keep its own vertices: see geometry.js.
-          const at = this.renderer.geometry.allocate(primitive.vertices, primitive.indices, skin, !primitive.morph);
+          const at = this.renderer.geometry.allocate(primitive.vertices, primitive.indices, skin, this._sharesCorners(primitive, built));
           built.baseVertex = at.baseVertex;
           built.firstIndex = at.firstIndex;
           built.placed = true;
@@ -698,6 +698,17 @@ export class Winding {
     return asset;
   }
 
+  /**
+   * Whether a primitive's depth-only draws may share its vertices by position
+   * (geometry.js). Not a morphed one, whose targets move each vertex on its
+   * own; not one whose shadow takes its shape from alpha, which reads each
+   * vertex's UVs and colour -- so the merged shadow lists can read the
+   * depth-only indices for every group, alpha-shaped or not (merged.js).
+   */
+  _sharesCorners(primitive, built) {
+    return !primitive.morph && this.renderer.materials.alphaModes[built.materialId] === ALPHA_OPAQUE;
+  }
+
   /** _load with `into`: the asset's place, ids and records kept, its GPU contents made again. */
   _refill(into, model, textures) {
     const same = model.meshes.length === into.meshes.length && model.meshes.every((mesh, m) => (
@@ -719,7 +730,7 @@ export class Winding {
       const skin = primitive.jointIndices
         ? new Uint8Array(packSkinVertices(primitive.jointIndices, primitive.jointWeights, primitive.vertexCount))
         : null;
-      this.renderer.geometry.writeAt(built.baseVertex, built.firstIndex, primitive.vertices, primitive.indices, skin, !primitive.morph);
+      this.renderer.geometry.writeAt(built.baseVertex, built.firstIndex, primitive.vertices, primitive.indices, skin, this._sharesCorners(primitive, built));
       if (primitive.morph) this.renderer.morph.writeAt(built.morphBase, primitive.morph.deltas);
     }));
     return into;

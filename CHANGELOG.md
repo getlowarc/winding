@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shadow pass, which reads only positions, transformed every copy. Each primitive now also has
   indices that name one vertex per corner (with the same joints and weights, when skinned) for its
   depth-only draws: the same triangles, so the same shadows -- checked to the pixel -- from about a
-  quarter of the vertices on a low-poly character. 300 low-poly walkers on Iris Xe: the sun's four
-  cascades from 3.4 to 2.4 ms, the GPU frame from 7.0 to 6.2 ms. Smooth meshes, which share their
-  corners already, draw as they did; morphed ones keep their own vertices. The cost is a second
-  copy of the index buffer, and at load about 26 ms for a 540,000-vertex flat mesh.
+  quarter of the vertices on a low-poly character; meshes merged into one draw (a level of distinct
+  meshes) cast from the same indices. On Iris Xe, the sun's four cascades: 300 low-poly walkers from
+  3.4 to 2.4 ms, the GPU frame from 7.0 to 6.2 ms; a town of boxes from 2.35 to 2.0 ms; the siege
+  from 3.0 to 2.6 ms. Smooth meshes, which share their corners already, draw as they did; morphed
+  ones, and those whose shadow takes its shape from alpha, keep their own vertices. The cost is a
+  second copy of the index buffer, and at load about 26 ms for a 540,000-vertex flat mesh.
 
 - **A crowd's world boxes, draw data and cull bounds are written on the workers.** Only the
   transforms were. Every moved renderable's box, its whole draw data -- matrices, tint, where its

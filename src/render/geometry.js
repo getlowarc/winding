@@ -24,7 +24,8 @@
 // these, the same triangles come from a quarter of the vertices, and the
 // GPU's cache of transformed vertices finds the rest. 300 low-poly walkers:
 // the sun's four cascades from 3.4 to 2.4 ms on Iris Xe. A morphed
-// primitive keeps its own indices: its targets move each vertex on its own.
+// primitive keeps its own indices, its targets moving each vertex on its
+// own, and so does one whose shadow takes its shape from alpha (Winding._sharesCorners).
 //
 // A skinned vertex's joints and weights go in a third buffer, also at the
 // same numbering, made when the first skinned primitive arrives. They have to

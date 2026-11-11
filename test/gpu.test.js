@@ -4368,7 +4368,10 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     // The demo's flat-shaded cubes: each corner three vertices, one a face.
     // Their casters drawn from indices that share the corners (geometry.js)
     // must give the frame drawn from the mesh's own, pixel for pixel -- and
-    // the two index buffers must differ, or the check proves nothing.
+    // the two index buffers must differ, or the check proves nothing. Two
+    // copies of the file, so each one's hub is a one-object batch of its own,
+    // and the two are merged (merged.js): their shadow lists are read from
+    // the same indices.
     const canvas = document.createElement('canvas');
     canvas.style.width = '160px';
     canvas.style.height = '120px';
@@ -4378,6 +4381,7 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     try {
       probe.gpu.resize(160, 120);
       const asset = await probe.load(await buildDemoGLB({ arms: 6, glass: 0 }));
+      const other = await probe.load(await buildDemoGLB({ arms: 0, glass: 0 }));
       const cam = new Camera({ fovY: 1, near: 0.1 });
       cam.position.set([6, 5, 7]);
       cam.target.set([0, 0.5, 0]);
@@ -4399,9 +4403,11 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
       const draw = async () => {
         const scene = probe.createScene();
         scene.add(asset);
+        scene.add(other).setPosition(-2.5, 0, 1.5);
         scene.addLight({ type: 'directional', direction: [-0.5, -0.8, -0.3], intensity: 3 });
         await probe.prepare(scene, cam);
         probe.renderFrame(scene, cam);
+        if (!(probe.renderer.gpu.merged?.groupCount > 0)) throw new Error('nothing was merged: the merged shadow lists go unchecked');
         return probe.gpu.readPixels();
       };
       const sharedFrame = await draw();
@@ -4414,7 +4420,7 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
       let differ = 0;
       for (let i = 0; i < sharedFrame.length; i++) if (sharedFrame[i] !== ownFrame[i]) differ++;
       if (differ > 0) throw new Error(`${differ} bytes differ between shadows from shared corners and from the mesh's own`);
-      return `${shared} of ${own.length} indices name a shared corner; the frame is the same`;
+      return `${shared} of ${own.length} indices name a shared corner; the frame is the same, ${probe.renderer.gpu.merged.groupCount} merged groups among it`;
     } finally {
       probe.destroy();
       canvas.remove();

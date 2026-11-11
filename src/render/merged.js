@@ -43,7 +43,9 @@
 // group, whose shadows cast only the level the camera shows.
 //
 // SHADOWS draw every caster, in view or not, so each group has a second list
-// holding every object's real indices, copied once when the batches are built:
+// holding every object's indices, copied once when the batches are built --
+// from the arena's depth-only indices, which share a flat mesh's corners
+// (geometry.js) and are its own for anything alpha-shaped:
 // a cascade, or a strip of one being scrolled, is a draw per group rather than
 // a draw per mesh. Nine hundred buildings under a turning sun were 3,600
 // shadow draws a frame, half the shadow GPU time and most of the frame's CPU.
@@ -394,7 +396,7 @@ export class MergedDraws {
     encoder.clearBuffer(work, 0, this._listBase * 4);
     const pass = encoder.beginComputePass({ label: 'merged-shadow-lists' });
     pass.setPipeline(this.copyAllPipeline);
-    pass.setBindGroup(0, this._makeBindGroup(gpu.cullParamsBuffer, gpu.cullParams.byteLength, gpu.drawDataBuffer, this._arena.indexBuffer, shadowIndices, gpu.boundsBuffer));
+    pass.setBindGroup(0, this._makeBindGroup(gpu.cullParamsBuffer, gpu.cullParams.byteLength, gpu.drawDataBuffer, this._arena.depthIndexBuffer, shadowIndices, gpu.boundsBuffer));
     pass.dispatchWorkgroups(Math.min(spans, 65535), Math.ceil(spans / 65535));
     pass.end();
     queue.submit([encoder.finish()]);
@@ -451,7 +453,7 @@ export class MergedDraws {
       this._bindKey = key;
       const b = this._buffers;
       this._bindGroup = this._makeBindGroup(gpu.cullParamsBuffer, gpu.cullParams.byteLength, gpu.drawDataBuffer, arena.indexBuffer, b.indices, gpu.boundsBuffer);
-      this._shadowGroup = this._makeBindGroup(gpu.cullParamsBuffer, gpu.cullParams.byteLength, gpu.drawDataBuffer, arena.indexBuffer, b.shadowIndices, gpu.boundsBuffer);
+      this._shadowGroup = this._makeBindGroup(gpu.cullParamsBuffer, gpu.cullParams.byteLength, gpu.drawDataBuffer, arena.depthIndexBuffer, b.shadowIndices, gpu.boundsBuffer);
       this._dispatchGroup = this.rhi.device.createBindGroup({
         label: 'merged-dispatch', layout: this.dispatchLayout, entries: [{ binding: 0, resource: { buffer: b.dispatch } }],
       });
