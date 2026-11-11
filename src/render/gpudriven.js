@@ -30,6 +30,7 @@ import { compileShader } from '../rhi/shader.js';
 import { sharedPipelines } from '../rhi/pipeline.js';
 import { createPipelineLayout } from '../rhi/bindgroups.js';
 import { grownCapacity, growArray } from '../core/grow.js';
+import { sharedFloat32Array } from '../core/shared.js';
 import { storageCapacity, createBuffer } from '../rhi/buffer.js';
 import { FRUSTUM_PLANE_COUNT } from '../core/math/frustum.js';
 
@@ -636,7 +637,8 @@ export class GpuDriven {
    * silently wearing the first one's pose.
    */
   _allocateDrawData(capacity) {
-    this.drawData = new Float32Array(capacity * (DRAW_DATA_BYTES / 4));
+    // Shared where the page has it: the job system's workers write the matrices (scene/renderableJob.js).
+    this.drawData = sharedFloat32Array(capacity * (DRAW_DATA_BYTES / 4));
     this.drawDataU32 = new Uint32Array(this.drawData.buffer);
   }
 
@@ -926,7 +928,7 @@ export class GpuDriven {
    * the renderables that moved, ascending (Scene.movedRenderables), or null to
    * look at every one.
    */
-  update(scene, frustum, hzb, viewProjection, writeDrawData, paletteOffsets, morph, projectionScale = 1, items = null, deformed = true) {
+  update(scene, frustum, hzb, viewProjection, matrices, paletteOffsets, morph, projectionScale = 1, items = null, deformed = true) {
     // A DIFFERENT scene needs rebuilding even when its revision happens to
     // match, and it usually does: every scene's first add() takes it to 1. The
     // check used to be on the revision alone, so rendering a second scene
@@ -977,6 +979,13 @@ export class GpuDriven {
     // Only what moved, when that is listed, nothing deformed, and no rebuild left renderables to rewrite.
     const listed = !full && items !== null && !deformed && touched === null;
     const n = listed ? items.length : count;
+    // The renderables to write, listed first, so that their matrices -- most
+    // of the work -- can be written on every thread at once: `matrices` is
+    // { items, write(count) }, items a list at least as long as the scene's
+    // renderables and write the renderer's job (scene/renderableJob.js). The
+    // rest of each one's data is written after, here, in order.
+    const list = matrices.items;
+    let writes = 0;
     for (let k = 0; scan && k < n; k++) {
       const i = listed ? items[k] : k;
       // Skinned and morphed boxes come from joints and weights, which change
@@ -984,18 +993,17 @@ export class GpuDriven {
       // alone, a character walked off its box and was culled where it stood.
       if (!listed && !full && moved[scene.renderableMatrixSlot[i]] === 0 && touched?.[i] !== 1
         && (!deformed || (scene.renderableSkin[i] < 0 && scene.renderableMorph[i] < 0))) continue;
-
+      list[writes++] = i;
+    }
+    // The model and normal matrices, and the tint words in the normal matrix's padding.
+    if (writes > 0) matrices.write(writes);
+    for (let k = 0; k < writes; k++) {
+      const i = list[k];
       const drawFloat = i * (DRAW_DATA_BYTES / 4);
-      writeDrawData(this.drawData, drawFloat, scene, i);
       // Where this instance's joints begin. Zero for anything unskinned, which
       // the unskinned vertex shader never reads anyway.
       const skin = scene.renderableSkin[i];
       this.drawDataU32[drawFloat + 28] = skin >= 0 ? paletteOffsets[skin] : 0;
-      // The tint and glow, as three words in the normal matrix's padding: see DrawData in pbr.js.
-      const tint = i * 3;
-      this.drawDataU32[drawFloat + 19] = scene.renderableTint[tint];
-      this.drawDataU32[drawFloat + 23] = scene.renderableTint[tint + 1];
-      this.drawDataU32[drawFloat + 27] = scene.renderableTint[tint + 2];
 
       // The three morph words. All static per renderable -- where a
       // primitive's deltas live, where an instance's weights live, and how

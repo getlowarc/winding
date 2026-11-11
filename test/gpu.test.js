@@ -1867,6 +1867,60 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     }
   });
 
+  await step('a moving crowd draws the same with its boxes and draw data written on the workers as here', async () => {
+    // 2,500 tinted cubes, every one moved and turned each frame: past the job
+    // system's threshold, so their world boxes and matrices are written across
+    // the workers (scene/renderableJob.js). The same two frames drawn with
+    // everything on this thread must come out pixel for pixel the same.
+    const canvas = document.createElement('canvas');
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas, { antialias: false });
+    try {
+      probe.gpu.resize(256, 256);
+      const scene = probe.createScene();
+      const asset = await probe.load(buildFeatureGLB({ baseColorFactor: [1, 1, 1, 1] }));
+      const cubes = [];
+      for (let i = 0; i < 2500; i++) {
+        const cube = scene.add(asset).setScale(0.3, 0.3, 0.3);
+        cube.setTint([(i % 7) / 7, (i % 11) / 11, (i % 13) / 13]);
+        cubes.push(cube);
+      }
+      const cam = new Camera({ fovY: 1.0, near: 0.1 });
+      cam.position.set([0, 0, 40]);
+      cam.target.set([0, 0, 0]);
+      const pose = (t) => cubes.forEach((cube, i) => cube
+        .setPosition((i % 50) - 24.5 + Math.sin(t + i) * 0.3, Math.floor(i / 50) - 24.5, Math.cos(t * 2 + i))
+        .setEuler(t + i * 0.1, t * 0.5, 0));
+      const draw = async () => {
+        pose(0); probe.renderFrame(scene, cam);
+        pose(1); probe.renderFrame(scene, cam);
+        return probe.gpu.readPixels();
+      };
+      // Workers check in once the first frame has handed them their columns.
+      pose(0); probe.renderFrame(scene, cam);
+      if (!(await probe.jobs.ready())) throw new Error(`no workers checked in: isolated ${globalThis.crossOriginIsolated}, parallel ${probe.jobs.parallel}, ${probe.jobs.readyCount} of ${probe.jobs.workerCount} ready`);
+      const before = probe.jobs.stats.parallel;
+      const wide = await draw();
+      const went = probe.jobs.stats.parallel - before;
+      if (went < 4) throw new Error(`${went} dispatches went wide over two frames: transforms, boxes and matrices each should have`);
+      const threshold = probe.jobs.parallelThreshold;
+      probe.jobs.parallelThreshold = Infinity;
+      const here = await draw();
+      probe.jobs.parallelThreshold = threshold;
+      let differ = 0, lit = 0;
+      for (let i = 0; i < wide.length; i++) {
+        if (wide[i] !== here[i]) differ++;
+        if ((i & 3) === 0 && wide[i] > 0) lit++;
+      }
+      if (lit < 1000) throw new Error(`only ${lit} lit pixels: the crowd is not in view`);
+      if (differ > 0) throw new Error(`${differ} bytes differ between the workers' frame and this thread's`);
+      return `${went} dispatches wide, ${lit} lit pixels, identical`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
+  });
+
   await step('splats draw back to front whatever order the file has them in, behind geometry in front', async () => {
     // Two opaque splats on the view axis, red in front of blue, written to
     // the file in both orders: the sort puts red over blue either way. Then

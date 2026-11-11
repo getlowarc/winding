@@ -375,4 +375,62 @@ await test('parallel composition matches serial, matrix for matrix', async () =>
   jobs.destroy();
 });
 
+await test('world boxes and draw-data matrices on the workers match the same jobs run here, bit for bit', async () => {
+  // 3,000 renderables on 1,000 nodes, a third of the nodes moved: each job
+  // run over a listed set and (for the boxes) over every renderable whose node
+  // moved, once across three workers and once inline on a copy.
+  const { sharedFloat32Array, sharedUint32Array, sharedUint8Array } = await import('../src/core/shared.js');
+  const { JOB_WORLD_BOUNDS, JOB_DRAW_MATRICES } = await import('../src/core/jobs.js');
+  const { boundsRange, matricesRange, renderableBuffers } = await import('../src/scene/renderableJob.js');
+  const N = 3000, NODES = 1000;
+  let seed = 7;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const columns = () => ({
+    items: sharedUint32Array(N), localMin: sharedFloat32Array(N * 3), localMax: sharedFloat32Array(N * 3),
+    worldMin: sharedFloat32Array(N * 3), worldMax: sharedFloat32Array(N * 3), matrixSlot: sharedUint32Array(N),
+    tint: sharedUint32Array(N * 3), world: sharedFloat32Array(NODES * 16), moved: sharedUint8Array(NODES),
+    drawData: sharedFloat32Array(N * 32),
+  });
+  const wide = columns();
+  wide.drawWords = new Uint32Array(wide.drawData.buffer);
+  for (let i = 0; i < N * 3; i++) {
+    wide.localMin[i] = random() * 2 - 2; wide.localMax[i] = wide.localMin[i] + random() * 3;
+    wide.tint[i] = (random() * 0xffffffff) >>> 0;
+  }
+  for (let i = 0; i < N; i++) wide.matrixSlot[i] = Math.floor(random() * NODES);
+  for (let i = 0; i < NODES * 16; i++) wide.world[i] = random() * 4 - 2;
+  for (let i = 0; i < NODES; i++) wide.moved[i] = random() < 0.33 ? 1 : 0;
+  const here = columns();
+  for (const key of Object.keys(here)) here[key].set(wide[key]);
+  here.drawWords = new Uint32Array(here.drawData.buffer);
+  let listed = 0;
+  for (let i = 0; i < N; i++) if (random() < 0.5) wide.items[listed++] = i;
+  here.items.set(wide.items);
+
+  const jobs = new JobSystem({ parallelThreshold: 1, workerCount: 3,
+    createWorker: () => new Worker(new URL('./fixtures/transformWorker.js', import.meta.url)),
+  });
+  jobs.register(JOB_WORLD_BOUNDS, (start, end, all) => boundsRange(wide, start, end, all === 1));
+  jobs.register(JOB_DRAW_MATRICES, (start, end) => matricesRange(wide, start, end));
+  jobs.setSharedData(renderableBuffers(wide), null, 'renderables');
+  assert.equal(await jobs.ready(), true, 'the workers checked in');
+
+  jobs.dispatch(JOB_WORLD_BOUNDS, N, { arg0: 1 });
+  boundsRange(here, 0, N, true);
+  jobs.dispatch(JOB_WORLD_BOUNDS, listed);
+  boundsRange(here, 0, listed, false);
+  jobs.dispatch(JOB_DRAW_MATRICES, listed);
+  matricesRange(here, 0, listed);
+  assert.equal(jobs.stats.parallel, 3, 'all three went wide');
+
+  for (const key of ['worldMin', 'worldMax', 'drawData']) {
+    const a = new Uint32Array(wide[key].buffer), b = new Uint32Array(here[key].buffer);
+    for (let i = 0; i < a.length; i++) assert.equal(a[i], b[i], `${key}[${i}] diverged`);
+  }
+  // And they did something: each listed renderable has draw data, and only those.
+  const isListed = new Set(wide.items.subarray(0, listed));
+  for (let i = 0; i < N; i++) assert.equal(wide.drawData[i * 32] !== 0, isListed.has(i), `renderable ${i}`);
+  jobs.destroy();
+});
+
 console.log(`\n${passed} checks passed\n`);

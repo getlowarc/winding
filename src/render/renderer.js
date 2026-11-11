@@ -21,7 +21,10 @@ const VIEW2D_KEEP_FRAMES = 120;
 export const OIT_ACCUM_FORMAT = 'rgba16float';
 export const OIT_REVEAL_FORMAT = 'r16float';
 
-import { mat4NormalMatrix, mat4Multiply, mat4Invert } from '../core/math/mat4.js';
+import { mat4Multiply, mat4Invert } from '../core/math/mat4.js';
+import { JOB_WORLD_BOUNDS, JOB_DRAW_MATRICES } from '../core/jobs.js';
+import { sharedUint32Array } from '../core/shared.js';
+import { boundsRange, matricesRange, renderableBuffers } from '../scene/renderableJob.js';
 import { vec3Create, vec3Sub, vec3Normalize } from '../core/math/vec3.js';
 import { frustumCreate, frustumFromViewProjection, frustumTestAABB } from '../core/math/frustum.js';
 import { grownCapacity } from '../core/grow.js';
@@ -59,7 +62,7 @@ import { Upscaler, MIN_RESOLUTION } from './upscale.js';
 import { SplatPass, SPLAT_CULL } from './splats.js';
 import { GpuDriven, BATCH_BYTES, INDIRECT_BYTES, CULL_SHADOW, CULL_CASCADE } from './gpudriven.js';
 import {
-  updateWorldBounds, unionWorldBounds, saveBoxes, moveUnion, farthestViewDepth, farthestDistance,
+  unionWorldBounds, saveBoxes, moveUnion, farthestViewDepth, farthestDistance,
   updateSkinBounds, applySkinBounds, BoxList,
 } from '../scene/bounds.js';
 import { HierarchicalDepth } from './hzb.js';
@@ -575,6 +578,89 @@ export class Renderer {
     // The opaque, single-sided variant is what almost every asset uses; having
     // it ready means the first model added never waits on a compile.
     await this.ensureVariants([0]);
+  }
+
+  /**
+   * The columns the renderable jobs read and write (scene/renderableJob.js):
+   * the scene's boxes, matrix slots and tints, its transforms' world matrices
+   * and moved flags, the draw data, and a list of renderables to work on.
+   * Rebuilt when any of them is a new array -- the scene, its transforms or
+   * the draw data grew, or another scene is drawn -- and published to the
+   * workers whenever this is not what they hold. Without workers it is the
+   * same columns, used here.
+   */
+  _renderableColumns(scene, jobs) {
+    const t = scene.transforms, gpu = this.gpu;
+    if (this._jobItems === undefined || this._jobItems.length < scene.renderableCapacity) {
+      this._jobItems = sharedUint32Array(scene.renderableCapacity);
+    }
+    let c = this._jobColumns;
+    if (c === undefined || c.items !== this._jobItems || c.localMin !== scene.localMin || c.localMax !== scene.localMax
+      || c.worldMin !== scene.worldMin || c.worldMax !== scene.worldMax || c.matrixSlot !== scene.renderableMatrixSlot
+      || c.tint !== scene.renderableTint || c.world !== t.world || c.moved !== t.moved || c.drawData !== gpu.drawData) {
+      c = this._jobColumns = {
+        items: this._jobItems, localMin: scene.localMin, localMax: scene.localMax, worldMin: scene.worldMin,
+        worldMax: scene.worldMax, matrixSlot: scene.renderableMatrixSlot, tint: scene.renderableTint,
+        world: t.world, moved: t.moved, drawData: gpu.drawData, drawWords: gpu.drawDataU32,
+      };
+      this._jobColumnsPublished = false;
+    }
+    if (jobs?.parallel && (!this._jobColumnsPublished || jobs.ownerOf('renderables') !== this)) {
+      jobs.setSharedData(renderableBuffers(c), this, 'renderables');
+      this._jobColumnsPublished = true;
+    }
+    return c;
+  }
+
+  /**
+   * World boxes for what moved, a renderable at a time on every thread there
+   * is (JOB_WORLD_BOUNDS): `items`, the moved ones listed, or null for every
+   * renderable whose node moved. Each is recorded as it was and as it is when
+   * `record` is given, for the shadow cache. Returns how many moved.
+   */
+  _worldBounds(scene, jobs, count, record, items) {
+    const c = this._renderableColumns(scene, jobs);
+    const all = items === null;
+    const n = all ? count : items.length;
+    if (!all) c.items.set(items);
+    const slot = scene.renderableMatrixSlot, moved = scene.transforms.moved;
+    const { worldMin, worldMax } = scene;
+    let updated = 0;
+    for (let k = 0; k < n; k++) {
+      const i = all ? k : items[k];
+      if (all && moved[slot[i]] === 0) continue;
+      record?.push(worldMin, worldMax, i * 3);
+      updated++;
+    }
+    if (updated === 0) return 0;
+    if (jobs !== null) jobs.dispatch(JOB_WORLD_BOUNDS, n, { arg0: all ? 1 : 0 });
+    else boundsRange(c, 0, n, all);
+    if (record !== null) {
+      for (let k = 0; k < n; k++) {
+        const i = all ? k : items[k];
+        if (!all || moved[slot[i]] === 1) record.push(worldMin, worldMax, i * 3);
+      }
+    }
+    return updated;
+  }
+
+  /**
+   * What GpuDriven.update writes its draw data's matrices with: a list for it
+   * to fill and a write(count) that runs JOB_DRAW_MATRICES over it -- on
+   * every thread there is, or here without them.
+   */
+  _matrices(scene, jobs) {
+    const c = this._renderableColumns(scene, jobs);
+    this._matrixWriter ??= { items: null, write: null };
+    const writer = this._matrixWriter;
+    writer.items = c.items;
+    writer.write = (n) => {
+      // The draw data may have grown inside update(), before this: its columns again.
+      const current = this._renderableColumns(scene, jobs);
+      if (jobs !== null) jobs.dispatch(JOB_DRAW_MATRICES, n);
+      else matricesRange(current, 0, n);
+    };
+    return writer;
   }
 
   /**
@@ -1102,10 +1188,7 @@ export class Renderer {
     // every one is looked at -- and their boxes as they were, for the union.
     const items = anyMoved ? scene.movedRenderables() : null;
     const before = items !== null ? saveBoxes(items, scene.worldMin, scene.worldMax, this._boxesBefore) : null;
-    const moved = anyMoved ? updateWorldBounds(
-      count, scene.localMin, scene.localMax, scene.worldMin, scene.worldMax,
-      scene.transforms.world, scene.renderableMatrixSlot, scene.transforms.moved, record, items,
-    ) : 0;
+    const moved = anyMoved ? this._worldBounds(scene, jobs, count, record, items) : 0;
 
     // Skinned renderables get their bounds replaced: the pass above gave them
     // a bind-pose box transformed by a model matrix the vertices do not follow.
@@ -1169,7 +1252,7 @@ export class Renderer {
     // Weights first: draw data records where each instance's slice begins,
     // and the gather below is what decides those offsets.
     this.morph.update(scene);
-    this.gpu.update(scene, this.frustum, hzb, camera.viewProjection, writeDrawData,
+    this.gpu.update(scene, this.frustum, hzb, camera.viewProjection, this._matrices(scene, jobs),
       this.skinPalette.offsets, this.morph, camera.projection[5], items, deformed);
     if (this._drawBindGroupRevision !== this.gpu.buffersRevision) this._makeDrawBindGroup();
     p?.mark('draw data');
@@ -2244,13 +2327,6 @@ let nextViewKey = 1;
 function viewKey(view) {
   if (!view.__oitKey) view.__oitKey = nextViewKey++;
   return view.__oitKey;
-}
-
-/** Model matrix plus its normal matrix, packed for the draw-data buffer. */
-function writeDrawData(out, offset, scene, renderable) {
-  const worldOffset = scene.renderableMatrixSlot[renderable] * 16;
-  for (let k = 0; k < 16; k++) out[offset + k] = scene.transforms.world[worldOffset + k];
-  mat4NormalMatrix(out, scene.transforms.world, offset + 16, worldOffset);
 }
 
 function alignUp(value, alignment) {

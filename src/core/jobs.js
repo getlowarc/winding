@@ -90,6 +90,9 @@ const DEFAULT_PARALLEL_THRESHOLD = 1024;
 /** Jobs are identified by a small integer so the control block stays an Int32Array. */
 export const JOB_NONE = 0;
 export const JOB_COMPOSE_TRANSFORMS = 1;
+/** A frame's moved renderables: their world boxes, then their draw data's matrices (scene/renderableJob.js). */
+export const JOB_WORLD_BOUNDS = 2;
+export const JOB_DRAW_MATRICES = 3;
 
 export class JobSystem {
   /**
@@ -111,7 +114,8 @@ export class JobSystem {
 
     /** Registered job bodies, by kind. Run on every thread including this one. */
     this._handlers = new Map();
-    this._buffers = null;
+    /** Who published each named set of buffers, held weakly: see setSharedData. */
+    this._owners = new Map();
 
     // Workers report in once their module has loaded and their handlers are
     // installed. Until every one has, dispatch runs inline -- a worker that is
@@ -154,9 +158,14 @@ export class JobSystem {
     }
   }
 
-  /** Whatever last published its buffers here, if it is still alive. See setSharedData. */
+  /** Whatever last published the buffers named `key` here, if it is still alive. See setSharedData. */
+  ownerOf(key) {
+    return this._owners.get(key)?.deref() ?? null;
+  }
+
+  /** The transform store whose columns the workers hold. */
   get sharedOwner() {
-    return this._owner?.deref() ?? null;
+    return this.ownerOf('transforms');
   }
 
   /**
@@ -167,19 +176,22 @@ export class JobSystem {
    * so a job handler can find the CURRENT owner instead of closing over one,
    * which is what lets two scenes exist: the workers can only hold one set of
    * buffers at a time, and the handler has to agree with them about whose.
+   *
+   * One set a `key`: the transform store's columns are 'transforms', the
+   * renderables' (scene/renderableJob.js) 'renderables', and publishing one
+   * leaves the other where it was.
    */
-  setSharedData(buffers, owner = null) {
-    this._buffers = buffers;
+  setSharedData(buffers, owner = null, key = 'transforms') {
     // Held weakly: it is a scene's transform store, and held, a scene the app
     // had dropped stayed alive until another scene composed in parallel.
-    this._owner = owner === null ? null : new WeakRef(owner);
+    this._owners.set(key, owner === null ? null : new WeakRef(owner));
     // A worker sits inside workerLoop and never returns to its event loop on
     // its own, so a second 'init' would queue unread while the worker went on
     // composing into the FIRST buffers it was given -- memory nobody reads
     // once a store has grown. The revision is how it learns to go and read it.
     const revision = Atomics.add(this.control, DATA, 1) + 1;
     for (const worker of this.workers) {
-      worker.postMessage({ type: 'init', control: this.control.buffer, buffers, revision });
+      worker.postMessage({ type: 'init', key, control: this.control.buffer, buffers, revision });
     }
   }
 
