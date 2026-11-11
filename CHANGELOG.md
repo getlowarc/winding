@@ -15,9 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   job system's threads too, past the same 1,024-item threshold, the same code either way. What stays on
   the main thread is the morph words of what is morphed, the upload runs and the upload itself.
   Checked to the bit against one thread, and to the pixel on a moving crowd of 2,500, some hidden.
-  300 walkers, 9,000 moving renderables, a laptop on battery in the same page: those from 3.1 to
-  1.25 ms a frame, and the frame from 11.2 to 9.4 ms of CPU, with the laptop throttled; at full clocks,
-  boxes and matrices alone went from 0.75 to 0.50 ms. 1,500 renderables: no slower.
+  300 walkers, 9,000 moving renderables, a 16-thread laptop on mains, one thread against the workers
+  in the same page: those from 1.0 to 0.65 ms a frame, and the renderer's CPU time from 3.7 to 3.4 ms
+  on average -- less than the jobs save, as the main thread then reads what other cores wrote, and the
+  upload alone is about 0.05 ms slower for it. The slower the CPU the more it pays: the same laptop
+  throttled on battery went from 11.2 to 9.4 ms a frame. 4,500 renderables: 0.87 to 0.59 ms; 1,500:
+  no slower.
 
 - **A crowd's transforms are composed on the workers.** The job system kept any dispatch under
   4,096 items on one thread, and the transform hierarchy is dispatched a depth level at a time, so
