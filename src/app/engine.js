@@ -42,9 +42,9 @@ import { Camera2D } from '../scene/camera2d.js';
 import { loadGLTF, DEFAULT_MATERIAL } from '../scene/gltf/parse.js';
 import { decodeImages, imageColorSpaces } from '../scene/gltf/images.js';
 import { Clock } from '../core/time.js';
-import { JobSystem, JOB_COMPOSE_TRANSFORMS, JOB_WORLD_BOUNDS, JOB_DRAW_MATRICES } from '../core/jobs.js';
+import { JobSystem, JOB_COMPOSE_TRANSFORMS, JOB_WORLD_BOUNDS, JOB_DRAW_DATA } from '../core/jobs.js';
 import { composeRange } from '../scene/transformJob.js';
-import { boundsRange, matricesRange } from '../scene/renderableJob.js';
+import { boundsRange, drawDataRange } from '../scene/renderableJob.js';
 import { sharedMemoryAvailable } from '../core/shared.js';
 import { TAA_SETTLE } from '../render/taa.js';
 import { checkOptions } from '../core/options.js';
@@ -226,8 +226,8 @@ export class Winding {
     // The renderer's columns, the ones it published: see Renderer._renderableColumns.
     this.jobs.register(JOB_WORLD_BOUNDS,
       (start, end, all) => boundsRange(this.renderer._jobColumns, start, end, all === 1));
-    this.jobs.register(JOB_DRAW_MATRICES,
-      (start, end) => matricesRange(this.renderer._jobColumns, start, end));
+    this.jobs.register(JOB_DRAW_DATA,
+      (start, end) => drawDataRange(this.renderer._jobColumns, start, end));
 
     this.clock = new Clock(1 / 60);
     this.fps = 0;

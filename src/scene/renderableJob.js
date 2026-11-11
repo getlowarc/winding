@@ -1,6 +1,6 @@
 // A frame's per-renderable work for what moved, as standalone functions over
-// shared columns: each renderable's world box, and its matrix block in the
-// draw data the GPU reads. As transformJob.js is for the hierarchy: the serial
+// shared columns: each renderable's world box, and its draw data and cull
+// bounds for the GPU. As transformJob.js is for the hierarchy: the serial
 // path and the parallel one run this same code, so they cannot disagree.
 //
 // Both are a renderable at a time, reading its node's world matrix and
@@ -12,6 +12,8 @@ import { mat4NormalMatrix } from '../core/math/mat4.js';
 
 /** Floats of one renderable's draw data: DRAW_DATA_BYTES / 4 in gpudriven.js. */
 const DRAW_FLOATS = 32;
+/** Floats of one renderable's cull bounds: BOUNDS_FLOATS in gpudriven.js. */
+const BOUNDS_FLOATS = 12;
 
 /**
  * World boxes from local ones, through each renderable's world matrix: for
@@ -30,13 +32,17 @@ export function boundsRange(columns, start, end, all) {
 }
 
 /**
- * The model matrix and its normal matrix of items[start..end) into their draw
- * data, and the tint and glow words that ride in the normal matrix's padding
- * (see DrawData in shaders/pbr.js). The rest of a renderable's draw data --
- * its joints' and morph targets' places -- is the renderer's to write.
+ * The draw data of items[start..end): the model matrix and its normal matrix,
+ * the tint and glow words in the normal matrix's padding (see DrawData in
+ * shaders/pbr.js), where its joints begin, and zero morph words -- the
+ * renderer writes them over for what is morphed, from its primitives. And its
+ * cull bounds: the world box, the coverage it draws between, and its LOD
+ * group's sphere through that group's world matrix, or a negative radius to
+ * keep it out of every view when hidden.
  */
-export function matricesRange(columns, start, end) {
-  const { items, world, matrixSlot, drawData, drawWords, tint } = columns;
+export function drawDataRange(columns, start, end) {
+  const { items, world, matrixSlot, drawData, drawWords, tint, skin, paletteOffsets, boundsData,
+    worldMin, worldMax, coverage, lodSlot, lodSphere, hidden } = columns;
   for (let k = start; k < end; k++) {
     const i = items[k];
     const w = matrixSlot[i] * 16, o = i * DRAW_FLOATS;
@@ -46,6 +52,39 @@ export function matricesRange(columns, start, end) {
     drawWords[o + 19] = tint[i * 3];
     drawWords[o + 23] = tint[i * 3 + 1];
     drawWords[o + 27] = tint[i * 3 + 2];
+    // Zero for anything unskinned, which the unskinned vertex shader never reads anyway.
+    const s = skin[i];
+    drawWords[o + 28] = s >= 0 ? paletteOffsets[s] : 0;
+    drawWords[o + 29] = 0;
+    drawWords[o + 30] = 0;
+    drawWords[o + 31] = 0;
+
+    const b = i * BOUNDS_FLOATS, v = i * 3;
+    boundsData[b] = worldMin[v];
+    boundsData[b + 1] = worldMin[v + 1];
+    boundsData[b + 2] = worldMin[v + 2];
+    boundsData[b + 3] = coverage[i * 2];
+    boundsData[b + 4] = worldMax[v];
+    boundsData[b + 5] = worldMax[v + 1];
+    boundsData[b + 6] = worldMax[v + 2];
+    boundsData[b + 7] = coverage[i * 2 + 1];
+    // Every level of a group measures the same sphere, so no distance shows two levels or none.
+    const l = lodSlot[i];
+    if (l >= 0) {
+      const m = l * 16, x = lodSphere[i * 4], y = lodSphere[i * 4 + 1], z = lodSphere[i * 4 + 2];
+      boundsData[b + 8] = world[m] * x + world[m + 4] * y + world[m + 8] * z + world[m + 12];
+      boundsData[b + 9] = world[m + 1] * x + world[m + 5] * y + world[m + 9] * z + world[m + 13];
+      boundsData[b + 10] = world[m + 2] * x + world[m + 6] * y + world[m + 10] * z + world[m + 14];
+      boundsData[b + 11] = lodSphere[i * 4 + 3] * Math.sqrt(Math.max(
+        world[m] * world[m] + world[m + 1] * world[m + 1] + world[m + 2] * world[m + 2],
+        world[m + 4] * world[m + 4] + world[m + 5] * world[m + 5] + world[m + 6] * world[m + 6],
+        world[m + 8] * world[m + 8] + world[m + 9] * world[m + 9] + world[m + 10] * world[m + 10],
+      ));
+    } else {
+      boundsData[b + 11] = 0;
+    }
+    // Hidden: a negative radius, which lodSelected keeps out of every view.
+    if (hidden[i] === 1) boundsData[b + 11] = -1;
   }
 }
 
@@ -63,6 +102,13 @@ export function renderableColumnsFromBuffers(buffers) {
     moved: new Uint8Array(buffers.moved),
     drawData: new Float32Array(buffers.drawData),
     drawWords: new Uint32Array(buffers.drawData),
+    skin: new Int32Array(buffers.skin),
+    paletteOffsets: new Uint32Array(buffers.paletteOffsets),
+    boundsData: new Float32Array(buffers.boundsData),
+    coverage: new Float32Array(buffers.coverage),
+    lodSlot: new Int32Array(buffers.lodSlot),
+    lodSphere: new Float32Array(buffers.lodSphere),
+    hidden: new Uint8Array(buffers.hidden),
   };
 }
 
@@ -79,5 +125,12 @@ export function renderableBuffers(columns) {
     world: columns.world.buffer,
     moved: columns.moved.buffer,
     drawData: columns.drawData.buffer,
+    skin: columns.skin.buffer,
+    paletteOffsets: columns.paletteOffsets.buffer,
+    boundsData: columns.boundsData.buffer,
+    coverage: columns.coverage.buffer,
+    lodSlot: columns.lodSlot.buffer,
+    lodSphere: columns.lodSphere.buffer,
+    hidden: columns.hidden.buffer,
   };
 }

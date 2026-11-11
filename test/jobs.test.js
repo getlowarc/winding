@@ -375,13 +375,14 @@ await test('parallel composition matches serial, matrix for matrix', async () =>
   jobs.destroy();
 });
 
-await test('world boxes and draw-data matrices on the workers match the same jobs run here, bit for bit', async () => {
-  // 3,000 renderables on 1,000 nodes, a third of the nodes moved: each job
-  // run over a listed set and (for the boxes) over every renderable whose node
-  // moved, once across three workers and once inline on a copy.
-  const { sharedFloat32Array, sharedUint32Array, sharedUint8Array } = await import('../src/core/shared.js');
-  const { JOB_WORLD_BOUNDS, JOB_DRAW_MATRICES } = await import('../src/core/jobs.js');
-  const { boundsRange, matricesRange, renderableBuffers } = await import('../src/scene/renderableJob.js');
+await test('world boxes, draw data and cull bounds on the workers match the same jobs run here, bit for bit', async () => {
+  // 3,000 renderables on 1,000 nodes, a third of the nodes moved, some
+  // skinned, some in LOD groups, some hidden: each job run over a listed set
+  // and (for the boxes) over every renderable whose node moved, once across
+  // three workers and once inline on a copy.
+  const { sharedFloat32Array, sharedInt32Array, sharedUint32Array, sharedUint8Array } = await import('../src/core/shared.js');
+  const { JOB_WORLD_BOUNDS, JOB_DRAW_DATA } = await import('../src/core/jobs.js');
+  const { boundsRange, drawDataRange, renderableBuffers } = await import('../src/scene/renderableJob.js');
   const N = 3000, NODES = 1000;
   let seed = 7;
   const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -389,7 +390,9 @@ await test('world boxes and draw-data matrices on the workers match the same job
     items: sharedUint32Array(N), localMin: sharedFloat32Array(N * 3), localMax: sharedFloat32Array(N * 3),
     worldMin: sharedFloat32Array(N * 3), worldMax: sharedFloat32Array(N * 3), matrixSlot: sharedUint32Array(N),
     tint: sharedUint32Array(N * 3), world: sharedFloat32Array(NODES * 16), moved: sharedUint8Array(NODES),
-    drawData: sharedFloat32Array(N * 32),
+    drawData: sharedFloat32Array(N * 32), skin: sharedInt32Array(N), paletteOffsets: sharedUint32Array(16),
+    boundsData: sharedFloat32Array(N * 12), coverage: sharedFloat32Array(N * 2), lodSlot: sharedInt32Array(N),
+    lodSphere: sharedFloat32Array(N * 4), hidden: sharedUint8Array(N),
   });
   const wide = columns();
   wide.drawWords = new Uint32Array(wide.drawData.buffer);
@@ -397,7 +400,15 @@ await test('world boxes and draw-data matrices on the workers match the same job
     wide.localMin[i] = random() * 2 - 2; wide.localMax[i] = wide.localMin[i] + random() * 3;
     wide.tint[i] = (random() * 0xffffffff) >>> 0;
   }
-  for (let i = 0; i < N; i++) wide.matrixSlot[i] = Math.floor(random() * NODES);
+  for (let i = 0; i < N; i++) {
+    wide.matrixSlot[i] = Math.floor(random() * NODES);
+    wide.skin[i] = random() < 0.2 ? Math.floor(random() * 16) : -1;
+    wide.lodSlot[i] = random() < 0.3 ? Math.floor(random() * NODES) : -1;
+    wide.hidden[i] = random() < 0.1 ? 1 : 0;
+  }
+  for (let i = 0; i < 16; i++) wide.paletteOffsets[i] = i * 31 + 1;
+  for (let i = 0; i < N * 4; i++) wide.lodSphere[i] = random() * 3;
+  for (let i = 0; i < N * 2; i++) wide.coverage[i] = random();
   for (let i = 0; i < NODES * 16; i++) wide.world[i] = random() * 4 - 2;
   for (let i = 0; i < NODES; i++) wide.moved[i] = random() < 0.33 ? 1 : 0;
   const here = columns();
@@ -411,7 +422,7 @@ await test('world boxes and draw-data matrices on the workers match the same job
     createWorker: () => new Worker(new URL('./fixtures/transformWorker.js', import.meta.url)),
   });
   jobs.register(JOB_WORLD_BOUNDS, (start, end, all) => boundsRange(wide, start, end, all === 1));
-  jobs.register(JOB_DRAW_MATRICES, (start, end) => matricesRange(wide, start, end));
+  jobs.register(JOB_DRAW_DATA, (start, end) => drawDataRange(wide, start, end));
   jobs.setSharedData(renderableBuffers(wide), null, 'renderables');
   assert.equal(await jobs.ready(), true, 'the workers checked in');
 
@@ -419,11 +430,11 @@ await test('world boxes and draw-data matrices on the workers match the same job
   boundsRange(here, 0, N, true);
   jobs.dispatch(JOB_WORLD_BOUNDS, listed);
   boundsRange(here, 0, listed, false);
-  jobs.dispatch(JOB_DRAW_MATRICES, listed);
-  matricesRange(here, 0, listed);
+  jobs.dispatch(JOB_DRAW_DATA, listed);
+  drawDataRange(here, 0, listed);
   assert.equal(jobs.stats.parallel, 3, 'all three went wide');
 
-  for (const key of ['worldMin', 'worldMax', 'drawData']) {
+  for (const key of ['worldMin', 'worldMax', 'drawData', 'boundsData']) {
     const a = new Uint32Array(wide[key].buffer), b = new Uint32Array(here[key].buffer);
     for (let i = 0; i < a.length; i++) assert.equal(a[i], b[i], `${key}[${i}] diverged`);
   }

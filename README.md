@@ -331,7 +331,7 @@ than budgets. Two limits remain hard, and both are derived rather than chosen: 2
 index field of a handle) and 4096 materials (the material field of a sort key).
 
 **A job system.** Atomic-cursor parallel-for across workers with the main thread participating.
-It composes the transform hierarchy, then each moved renderable's world box and draw-data matrices.
+It composes the transform hierarchy, then each moved renderable's world box, draw data and cull bounds.
 Requires cross-origin isolation for `SharedArrayBuffer`; without it, it runs inline and produces
 identical results, so the engine works on static hosting that cannot set headers.
 

@@ -435,7 +435,7 @@ export class GpuDriven {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
-    this.boundsData = new Float32Array(capacity * BOUNDS_FLOATS);
+    this.boundsData = sharedFloat32Array(capacity * BOUNDS_FLOATS);
     this.boundsBuffer = createBuffer(rhi, {
       label: 'cull-bounds',
       size: capacity * BOUNDS_FLOATS * 4,
@@ -651,7 +651,7 @@ export class GpuDriven {
     const STORAGE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
 
     this._allocateDrawData(capacity);
-    this.boundsData = new Float32Array(capacity * BOUNDS_FLOATS);
+    this.boundsData = sharedFloat32Array(capacity * BOUNDS_FLOATS);
     this.itemBatch = new Uint32Array(capacity);
     this.itemMirrored = new Uint8Array(capacity);
     this.batchOrder = new Uint32Array(capacity);
@@ -928,7 +928,7 @@ export class GpuDriven {
    * the renderables that moved, ascending (Scene.movedRenderables), or null to
    * look at every one.
    */
-  update(scene, frustum, hzb, viewProjection, matrices, paletteOffsets, morph, projectionScale = 1, items = null, deformed = true) {
+  update(scene, frustum, hzb, viewProjection, writer, morph, projectionScale = 1, items = null, deformed = true) {
     // A DIFFERENT scene needs rebuilding even when its revision happens to
     // match, and it usually does: every scene's first add() takes it to 1. The
     // check used to be on the revision alone, so rendering a second scene
@@ -979,12 +979,13 @@ export class GpuDriven {
     // Only what moved, when that is listed, nothing deformed, and no rebuild left renderables to rewrite.
     const listed = !full && items !== null && !deformed && touched === null;
     const n = listed ? items.length : count;
-    // The renderables to write, listed first, so that their matrices -- most
-    // of the work -- can be written on every thread at once: `matrices` is
+    // The renderables to write, listed first, so that their draw data and
+    // cull bounds can be written on every thread at once: `writer` is
     // { items, write(count) }, items a list at least as long as the scene's
-    // renderables and write the renderer's job (scene/renderableJob.js). The
-    // rest of each one's data is written after, here, in order.
-    const list = matrices.items;
+    // renderables and write the renderer's job (scene/renderableJob.js). Only
+    // the morph words, from the renderer's primitives, and the upload runs are
+    // left for here, in order.
+    const list = writer.items;
     let writes = 0;
     for (let k = 0; scan && k < n; k++) {
       const i = listed ? items[k] : k;
@@ -995,69 +996,28 @@ export class GpuDriven {
         && (!deformed || (scene.renderableSkin[i] < 0 && scene.renderableMorph[i] < 0))) continue;
       list[writes++] = i;
     }
-    // The model and normal matrices, and the tint words in the normal matrix's padding.
-    if (writes > 0) matrices.write(writes);
+    if (writes > 0) writer.write(writes);
     for (let k = 0; k < writes; k++) {
       const i = list[k];
+      addToRuns(runs, i, mergeGap);
+      const m = scene.renderableMorph[i];
+      if (m < 0) continue;
       const drawFloat = i * (DRAW_DATA_BYTES / 4);
-      // Where this instance's joints begin. Zero for anything unskinned, which
-      // the unskinned vertex shader never reads anyway.
-      const skin = scene.renderableSkin[i];
-      this.drawDataU32[drawFloat + 28] = skin >= 0 ? paletteOffsets[skin] : 0;
 
-      // The three morph words. All static per renderable -- where a
-      // primitive's deltas live, where an instance's weights live, and how
+      // The three morph words, left zero by the job for anything not morphed.
+      // All static per renderable -- where a primitive's deltas live, where an instance's weights live, and how
       // many of each -- which is why they can ride the same "only what moved"
       // upload as the matrix. The WEIGHTS themselves are a separate buffer,
       // rewritten whole every frame, precisely because they are not.
-      const m = scene.renderableMorph[i];
       const primitive = scene.renderablePrimitive[i];
       // Less the primitive's place in the geometry arena: vertex_index counts
       // from the arena's start, its deltas from the primitive's first vertex.
       // u32 arithmetic wraps on the GPU as >>> 0 does here, so the sum lands
       // right even where this one is "negative".
       const cs = primitive.morphCountStride;
-      this.drawDataU32[drawFloat + 29] = m >= 0
-        ? (primitive.morphBase - primitive.baseVertex * (cs & 0xffff) * (cs >>> 16)) >>> 0
-        : 0;
-      this.drawDataU32[drawFloat + 30] = m >= 0 ? morph.offsets[m] : 0;
-      this.drawDataU32[drawFloat + 31] = m >= 0 ? primitive.morphCountStride : 0;
-
-      const b = i * BOUNDS_FLOATS;
-      const o = i * 3;
-      this.boundsData[b] = scene.worldMin[o];
-      this.boundsData[b + 1] = scene.worldMin[o + 1];
-      this.boundsData[b + 2] = scene.worldMin[o + 2];
-      this.boundsData[b + 3] = scene.renderableCoverage[i * 2];
-      this.boundsData[b + 4] = scene.worldMax[o];
-      this.boundsData[b + 5] = scene.worldMax[o + 1];
-      this.boundsData[b + 6] = scene.worldMax[o + 2];
-      this.boundsData[b + 7] = scene.renderableCoverage[i * 2 + 1];
-      // The group's sphere, through the group node's world matrix: every
-      // level measures the same one, so no distance shows two levels or none.
-      const lodSlot = scene.renderableLodSlot[i];
-      if (lodSlot >= 0) {
-        const w = scene.transforms.world;
-        const m = lodSlot * 16;
-        const s = scene.renderableLodSphere;
-        const x = s[i * 4];
-        const y = s[i * 4 + 1];
-        const z = s[i * 4 + 2];
-        this.boundsData[b + 8] = w[m] * x + w[m + 4] * y + w[m + 8] * z + w[m + 12];
-        this.boundsData[b + 9] = w[m + 1] * x + w[m + 5] * y + w[m + 9] * z + w[m + 13];
-        this.boundsData[b + 10] = w[m + 2] * x + w[m + 6] * y + w[m + 10] * z + w[m + 14];
-        this.boundsData[b + 11] = s[i * 4 + 3] * Math.sqrt(Math.max(
-          w[m] * w[m] + w[m + 1] * w[m + 1] + w[m + 2] * w[m + 2],
-          w[m + 4] * w[m + 4] + w[m + 5] * w[m + 5] + w[m + 6] * w[m + 6],
-          w[m + 8] * w[m + 8] + w[m + 9] * w[m + 9] + w[m + 10] * w[m + 10],
-        ));
-      } else {
-        this.boundsData[b + 11] = 0;
-      }
-      // Hidden: a negative radius, which lodSelected keeps out of every view.
-      if (scene.renderableHidden[i] === 1) this.boundsData[b + 11] = -1;
-
-      addToRuns(runs, i, mergeGap);
+      this.drawDataU32[drawFloat + 29] = (primitive.morphBase - primitive.baseVertex * (cs & 0xffff) * (cs >>> 16)) >>> 0;
+      this.drawDataU32[drawFloat + 30] = morph.offsets[m];
+      this.drawDataU32[drawFloat + 31] = cs;
     }
     this._needsFullUpload = false;
     for (const i of this._touched) this._touchedMark[i] = 0;

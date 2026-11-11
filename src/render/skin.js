@@ -13,6 +13,7 @@
 
 import { mat4Multiply, mat4MultiplyAffine } from '../core/math/mat4.js';
 import { grownCapacity } from '../core/grow.js';
+import { sharedUint32Array } from '../core/shared.js';
 import { storageCapacity, createBuffer } from '../rhi/buffer.js';
 import { handleIndex } from '../core/handle.js';
 
@@ -30,7 +31,8 @@ export class SkinPalette {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     /** Start joint of each skin instance, by index into scene.skins. */
-    this.offsets = new Uint32Array(64);
+    // Shared: the workers read it into each renderable's draw data (scene/renderableJob.js).
+    this.offsets = sharedUint32Array(64);
     this.jointCount = 0;
     /** Bumped when the buffer is replaced, so bind groups know to rebuild. */
     this.revision = 0;
@@ -58,7 +60,7 @@ export class SkinPalette {
     for (const skin of skins) total += skin.joints.length;
     if (total > this.capacity) this._grow(total);
     if (this.offsets.length < skins.length) {
-      this.offsets = new Uint32Array(grownCapacity(this.offsets.length, skins.length));
+      this.offsets = sharedUint32Array(grownCapacity(this.offsets.length, skins.length));
     }
 
     const world = scene.transforms.world;

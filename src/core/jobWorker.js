@@ -5,9 +5,9 @@
 // workerLoop. Any logic that lived here would be logic the serial path does not
 // run, and the two would eventually disagree.
 
-import { workerLoop, JOB_COMPOSE_TRANSFORMS, JOB_WORLD_BOUNDS, JOB_DRAW_MATRICES } from './jobs.js';
+import { workerLoop, JOB_COMPOSE_TRANSFORMS, JOB_WORLD_BOUNDS, JOB_DRAW_DATA } from './jobs.js';
 import { composeRange, columnsFromBuffers } from '../scene/transformJob.js';
-import { boundsRange, matricesRange, renderableColumnsFromBuffers } from '../scene/renderableJob.js';
+import { boundsRange, drawDataRange, renderableColumnsFromBuffers } from '../scene/renderableJob.js';
 
 const postReady = () => self.postMessage({ type: 'ready' });
 // Once. A worker gets a fresh 'init' every time a scene republishes its
@@ -29,6 +29,6 @@ self.addEventListener('message', (event) => {
   workerLoop(control, new Map([
     [JOB_COMPOSE_TRANSFORMS, (start, end, base) => composeRange(groups.transforms, base, start, end)],
     [JOB_WORLD_BOUNDS, (start, end, all) => boundsRange(groups.renderables, start, end, all === 1)],
-    [JOB_DRAW_MATRICES, (start, end) => matricesRange(groups.renderables, start, end)],
+    [JOB_DRAW_DATA, (start, end) => drawDataRange(groups.renderables, start, end)],
   ]), message.revision);
 });

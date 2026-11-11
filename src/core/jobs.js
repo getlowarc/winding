@@ -90,9 +90,9 @@ const DEFAULT_PARALLEL_THRESHOLD = 1024;
 /** Jobs are identified by a small integer so the control block stays an Int32Array. */
 export const JOB_NONE = 0;
 export const JOB_COMPOSE_TRANSFORMS = 1;
-/** A frame's moved renderables: their world boxes, then their draw data's matrices (scene/renderableJob.js). */
+/** A frame's moved renderables: their world boxes, then their draw data and cull bounds (scene/renderableJob.js). */
 export const JOB_WORLD_BOUNDS = 2;
-export const JOB_DRAW_MATRICES = 3;
+export const JOB_DRAW_DATA = 3;
 
 export class JobSystem {
   /**

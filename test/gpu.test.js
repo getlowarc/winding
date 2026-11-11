@@ -1868,8 +1868,8 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
   });
 
   await step('a moving crowd draws the same with its boxes and draw data written on the workers as here', async () => {
-    // 2,500 tinted cubes, every one moved and turned each frame: past the job
-    // system's threshold, so their world boxes and matrices are written across
+    // 2,500 tinted cubes, some hidden, every one moved and turned each frame: past
+    // the job system's threshold, so their world boxes and draw data are written across
     // the workers (scene/renderableJob.js). The same two frames drawn with
     // everything on this thread must come out pixel for pixel the same.
     const canvas = document.createElement('canvas');
@@ -1883,6 +1883,8 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
       for (let i = 0; i < 2500; i++) {
         const cube = scene.add(asset).setScale(0.3, 0.3, 0.3);
         cube.setTint([(i % 7) / 7, (i % 11) / 11, (i % 13) / 13]);
+        // Some hidden: their cull bounds carry it, written on the workers with the rest.
+        if (i % 17 === 0) cube.setVisible(false);
         cubes.push(cube);
       }
       const cam = new Camera({ fovY: 1.0, near: 0.1 });

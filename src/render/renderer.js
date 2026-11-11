@@ -22,9 +22,9 @@ export const OIT_ACCUM_FORMAT = 'rgba16float';
 export const OIT_REVEAL_FORMAT = 'r16float';
 
 import { mat4Multiply, mat4Invert } from '../core/math/mat4.js';
-import { JOB_WORLD_BOUNDS, JOB_DRAW_MATRICES } from '../core/jobs.js';
+import { JOB_WORLD_BOUNDS, JOB_DRAW_DATA } from '../core/jobs.js';
 import { sharedUint32Array } from '../core/shared.js';
-import { boundsRange, matricesRange, renderableBuffers } from '../scene/renderableJob.js';
+import { boundsRange, drawDataRange, renderableBuffers } from '../scene/renderableJob.js';
 import { vec3Create, vec3Sub, vec3Normalize } from '../core/math/vec3.js';
 import { frustumCreate, frustumFromViewProjection, frustumTestAABB } from '../core/math/frustum.js';
 import { grownCapacity } from '../core/grow.js';
@@ -582,26 +582,33 @@ export class Renderer {
 
   /**
    * The columns the renderable jobs read and write (scene/renderableJob.js):
-   * the scene's boxes, matrix slots and tints, its transforms' world matrices
-   * and moved flags, the draw data, and a list of renderables to work on.
+   * the scene's boxes and per-renderable columns, its transforms' world
+   * matrices and moved flags, the skins' palette offsets, the draw data and
+   * cull bounds, and a list of renderables to work on.
    * Rebuilt when any of them is a new array -- the scene, its transforms or
    * the draw data grew, or another scene is drawn -- and published to the
    * workers whenever this is not what they hold. Without workers it is the
    * same columns, used here.
    */
   _renderableColumns(scene, jobs) {
-    const t = scene.transforms, gpu = this.gpu;
+    const t = scene.transforms, gpu = this.gpu, palette = this.skinPalette.offsets;
     if (this._jobItems === undefined || this._jobItems.length < scene.renderableCapacity) {
       this._jobItems = sharedUint32Array(scene.renderableCapacity);
     }
     let c = this._jobColumns;
     if (c === undefined || c.items !== this._jobItems || c.localMin !== scene.localMin || c.localMax !== scene.localMax
       || c.worldMin !== scene.worldMin || c.worldMax !== scene.worldMax || c.matrixSlot !== scene.renderableMatrixSlot
-      || c.tint !== scene.renderableTint || c.world !== t.world || c.moved !== t.moved || c.drawData !== gpu.drawData) {
+      || c.tint !== scene.renderableTint || c.world !== t.world || c.moved !== t.moved || c.drawData !== gpu.drawData
+      || c.skin !== scene.renderableSkin || c.paletteOffsets !== palette || c.boundsData !== gpu.boundsData
+      || c.coverage !== scene.renderableCoverage || c.lodSlot !== scene.renderableLodSlot
+      || c.lodSphere !== scene.renderableLodSphere || c.hidden !== scene.renderableHidden) {
       c = this._jobColumns = {
         items: this._jobItems, localMin: scene.localMin, localMax: scene.localMax, worldMin: scene.worldMin,
         worldMax: scene.worldMax, matrixSlot: scene.renderableMatrixSlot, tint: scene.renderableTint,
         world: t.world, moved: t.moved, drawData: gpu.drawData, drawWords: gpu.drawDataU32,
+        skin: scene.renderableSkin, paletteOffsets: palette, boundsData: gpu.boundsData,
+        coverage: scene.renderableCoverage, lodSlot: scene.renderableLodSlot,
+        lodSphere: scene.renderableLodSphere, hidden: scene.renderableHidden,
       };
       this._jobColumnsPublished = false;
     }
@@ -645,20 +652,20 @@ export class Renderer {
   }
 
   /**
-   * What GpuDriven.update writes its draw data's matrices with: a list for it
-   * to fill and a write(count) that runs JOB_DRAW_MATRICES over it -- on
+   * What GpuDriven.update writes its draw data and cull bounds with: a list
+   * for it to fill and a write(count) that runs JOB_DRAW_DATA over it -- on
    * every thread there is, or here without them.
    */
-  _matrices(scene, jobs) {
+  _drawData(scene, jobs) {
     const c = this._renderableColumns(scene, jobs);
     this._matrixWriter ??= { items: null, write: null };
     const writer = this._matrixWriter;
     writer.items = c.items;
     writer.write = (n) => {
-      // The draw data may have grown inside update(), before this: its columns again.
+      // The draw data may have grown inside update(), before this: the columns again.
       const current = this._renderableColumns(scene, jobs);
-      if (jobs !== null) jobs.dispatch(JOB_DRAW_MATRICES, n);
-      else matricesRange(current, 0, n);
+      if (jobs !== null) jobs.dispatch(JOB_DRAW_DATA, n);
+      else drawDataRange(current, 0, n);
     };
     return writer;
   }
@@ -1252,8 +1259,8 @@ export class Renderer {
     // Weights first: draw data records where each instance's slice begins,
     // and the gather below is what decides those offsets.
     this.morph.update(scene);
-    this.gpu.update(scene, this.frustum, hzb, camera.viewProjection, this._matrices(scene, jobs),
-      this.skinPalette.offsets, this.morph, camera.projection[5], items, deformed);
+    this.gpu.update(scene, this.frustum, hzb, camera.viewProjection, this._drawData(scene, jobs),
+      this.morph, camera.projection[5], items, deformed);
     if (this._drawBindGroupRevision !== this.gpu.buffersRevision) this._makeDrawBindGroup();
     p?.mark('draw data');
 

@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **A crowd's world boxes and draw-data matrices are written on the workers.** Only the transforms
-  were. Every moved renderable's box and its model and normal matrices are now written across the job
-  system's threads too, past the same 1,024-item threshold, the same code either way. Checked to the
-  bit against one thread, and to the pixel on a moving crowd of 2,500. 300 walkers, 9,000 moving
-  renderables, on a laptop on battery: those two from 0.75 to 0.50 ms a frame; 1,500, from 0.29 to
-  0.22 ms. The rest of each renderable's draw data, and the upload, stay on the main thread.
+- **A crowd's world boxes, draw data and cull bounds are written on the workers.** Only the
+  transforms were. Every moved renderable's box, its whole draw data -- matrices, tint, where its
+  joints begin -- and its cull bounds, LOD sphere and hidden flag included, are now written across the
+  job system's threads too, past the same 1,024-item threshold, the same code either way. What stays on
+  the main thread is the morph words of what is morphed, the upload runs and the upload itself.
+  Checked to the bit against one thread, and to the pixel on a moving crowd of 2,500, some hidden.
+  300 walkers, 9,000 moving renderables, a laptop on battery in the same page: those from 3.1 to
+  1.25 ms a frame, and the frame from 11.2 to 9.4 ms of CPU, with the laptop throttled; at full clocks,
+  boxes and matrices alone went from 0.75 to 0.50 ms. 1,500 renderables: no slower.
 
 - **A crowd's transforms are composed on the workers.** The job system kept any dispatch under
   4,096 items on one thread, and the transform hierarchy is dispatched a depth level at a time, so
