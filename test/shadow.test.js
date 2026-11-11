@@ -8,7 +8,7 @@
 
 import assert from 'node:assert/strict';
 
-import { mat4Create, mat4OrthographicReverseZ } from '../src/core/math/mat4.js';
+import { mat4Create, mat4OrthographicReverseZ, mat4LookAt, mat4Multiply } from '../src/core/math/mat4.js';
 import { Camera } from '../src/scene/camera.js';
 import {
   cascadeSplits, frustumSliceSphere, MAX_CASCADES, ShadowMaps, stableShadowDistance,
@@ -845,6 +845,46 @@ test('each point-light face lists the casters that reach into it, a run a batch'
   maps._listLocalCasters(scene, gpu, 1.05);
   assert.equal(maps._viewRuns[0], -1);
   assert.deepEqual(listed(2), [[0, [1]]]);
+});
+
+test("a light's cascades are asked at once which moved boxes reach them, and answer as their matrices would", () => {
+  // Four cascades of one light: a shared view, each its own box in that view's
+  // space. For 4,000 random boxes, one at a time, the bit each cascade gets
+  // must be what projecting the box's corners through its matrix says
+  // (boxInOrtho) -- or, within the margin, a redraw the corners would not ask for.
+  const view = mat4Create();
+  mat4LookAt(view, [0, 0, 0], [-0.4, -0.8, -0.35], [0, 1, 0]);
+  const boxes = new Float64Array(4 * 6), matrices = new Float32Array(4 * 16), projection = mat4Create();
+  [[-4, 4, -3, 5, -40, 10], [-10, 12, -9, 11, -40, 10], [-25, 20, -22, 26, -40, 10], [-60, 55, -58, 61, -40, 10]].forEach(([x0, x1, y0, y1, z0, z1], c) => {
+    boxes.set([x0, x1, y0, y1, z0, z1], c * 6);
+    mat4OrthographicReverseZ(projection, x0, x1, y0, y1, -z1, -z0);
+    mat4Multiply(matrices, projection, view, c * 16, 0, 0);
+  });
+  let seed = 11;
+  const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const list = new BoxList();
+  const data = new Float32Array(6);
+  let agreed = 0, extra = 0;
+  for (let n = 0; n < 4000; n++) {
+    const c = [random() * 160 - 80, random() * 60 - 30, random() * 160 - 80], h = [random() * 3, random() * 3, random() * 3];
+    for (let a = 0; a < 3; a++) { data[a] = c[a] - h[a]; data[3 + a] = c[a] + h[a]; }
+    list.clear();
+    list.push(data, data.subarray(3), 0);
+    const bits = list.touching(view, boxes, 0, 4);
+    for (let k = 0; k < 4; k++) {
+      const corners = boxInOrtho(data, 0, matrices, k * 16);
+      if (((bits >> k) & 1) === (corners ? 1 : 0)) agreed++;
+      else if (!corners) extra++;
+      else assert.fail(`box ${n} reaches cascade ${k} by its corners, and the one-pass test missed it`);
+    }
+  }
+  assert.ok(extra <= 4, `${extra} redraws the corners would not ask for, past the margin`);
+  assert.ok(agreed >= 15990, `${agreed} of 16000 agree`);
+  // Several boxes: a bit for every cascade any of them reaches.
+  list.clear();
+  list.push(Float32Array.of(0, 0, 0), Float32Array.of(0.1, 0.1, 0.1), 0);
+  const all = list.touching(view, boxes, 0, 4);
+  assert.equal(all, 15, 'a box at the origin, in every cascade');
 });
 
 console.log(`\n${passed} checks passed\n`);

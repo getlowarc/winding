@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The sun's shadows check what moved once a light, not once a cascade.** Each cascade asked
+  whether any box that moved this frame reached it, projecting every box's eight corners through
+  its matrix; with everything moving, that was every box, four times. Now each box is taken into
+  the light's space once, as its centre and extent, and tested against all of the light's cascades
+  there, which is the box its corners give. 10,000 moving cubes: the shadow fit from about 1.2 to
+  0.4 ms of CPU a frame.
+
 - **A point light's shadow is looked up without its face's matrix.** Each pixel lit by a shadowed
   point light loaded that cube face's view matrix and multiplied by it, light by light; a face is a
   fixed 90-degree view down an axis, so where a point falls on it is two of its components over the
