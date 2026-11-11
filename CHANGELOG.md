@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.2] - 2026-11-11
+
+**Crowds and shadows, cheaper.** A crowd's moving parts -- their transforms, world boxes, draw
+data and cull bounds -- are worked out on the job system's workers, and shadows from flat-shaded
+meshes transform about a quarter of the vertices: 300 low-poly walkers' sun shadows went from 3.4
+to 2.4 ms of GPU time, with the same pixels.
+
 ### Changed
 
 - **Shadows from flat-shaded meshes transform a fraction of the vertices.** A flat-shaded mesh
@@ -2671,7 +2678,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.1...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.2...HEAD
+[1.9.2]: https://github.com/getlowarc/winding/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/getlowarc/winding/compare/v1.8.0...v1.9.0
 [1.8.0]: https://github.com/getlowarc/winding/compare/v1.7.0...v1.8.0
