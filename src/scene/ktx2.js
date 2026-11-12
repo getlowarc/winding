@@ -1,5 +1,6 @@
 // The KTX2 container (Khronos KTX File Format 2.0): a texture's mip levels and
-// what they hold. No GPU here -- what to make of the levels is the loader's.
+// what they hold, and (transcodeKTX2) its Basis levels in a format a GPU
+// samples. No GPU here -- which format, and the upload, are the loader's.
 //
 // A level is kept as it will be transcoded or uploaded: zstd-packed levels
 // unpacked (core/zstd.js), BasisLZ ones (ETC1S) left as they are with the
@@ -8,6 +9,7 @@
 // channels it carries.
 
 import { zstdDecompress } from '../core/zstd.js';
+import { uastcToRGBA, uastcToBC7, uastcToASTC } from './uastc.js';
 
 const IDENTIFIER = [0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -91,4 +93,24 @@ export function readKTX2(bytes) {
     vkFormat, width, height: Math.max(1, height), depth, layers, faces, levels,
     basis, srgb, channels, premultiplied, supercompression, globalData,
   };
+}
+
+/**
+ * A Basis UASTC KTX2 file's levels for the GPU: `target` 'astc' (ASTC 4x4,
+ * nothing lost), 'bc7', or 'rgba' (RGBA8). Returns { width, height, target,
+ * levels: [{ width, height, data }] }, `target` being what was written:
+ * RGBA8 instead of a block format when the file has a single level, since a
+ * block-compressed texture's mips cannot be rendered on the GPU (RGBA8 can),
+ * or when its size is not whole 4x4 blocks, which WebGPU asks of one.
+ * Every level the file has comes back; with one, the caller makes the mips.
+ */
+export function transcodeKTX2(bytes, target) {
+  const file = readKTX2(bytes);
+  if (file.basis === 'etc1s') fail('ETC1S (BasisLZ) is not read yet, only UASTC');
+  if (file.basis !== 'uastc') fail('not Basis Universal: KHR_texture_basisu holds UASTC or ETC1S');
+  if (file.depth > 1 || file.layers > 1 || file.faces !== 1) fail('not a 2D image (a volume, an array or a cube)');
+  const { width, height, levels } = file;
+  if (levels.length === 1 || width % 4 || height % 4) target = 'rgba';
+  const transcode = target === 'astc' ? uastcToASTC : target === 'bc7' ? uastcToBC7 : uastcToRGBA;
+  return { width, height, target, levels: levels.map((l) => ({ width: l.width, height: l.height, data: transcode(l.data, l.width, l.height) })) };
 }

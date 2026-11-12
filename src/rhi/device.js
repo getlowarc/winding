@@ -29,7 +29,9 @@ export const DEPTH_COMPARE = 'greater';
  * Requesting a feature the hardware lacks fails device creation outright, so
  * every entry here must have a working fallback path.
  */
-const OPTIONAL_FEATURES = ['timestamp-query'];
+// The two block-compressed texture families KTX2 images are transcoded to:
+// BC on desktop GPUs, ASTC on Apple and mobile ones (glTF loading picks).
+const OPTIONAL_FEATURES = ['timestamp-query', 'texture-compression-bc', 'texture-compression-astc'];
 
 /**
  * The limits a scene's size runs into: buffers that grow with objects, lights

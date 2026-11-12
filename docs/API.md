@@ -228,6 +228,8 @@ scene.add(helmet);
 
 Notes: every call allocates, the same file included. Free a model you no longer need with [`engine.unload`](#engine-unload). The file itself is not kept once the model is built: `source` is `null`. An image larger than the device's biggest texture is left out, with a warning in the console, and its material uses its factor alone. A relative `baseURL` is taken against the page, as a relative link in it would be.
 
+KTX2 images (`KHR_texture_basisu`) holding Basis UASTC are read, and preferred over a PNG or JPEG the file keeps as a fallback, which is then not downloaded. Each is transcoded on workers to what the GPU samples: ASTC 4x4 where the device has it (nothing lost: UASTC is a subset of it), else BC7 (desktop GPUs), else RGBA8. ASTC and BC7 take a quarter of RGBA8's memory, a byte a texel, and are faster to sample; the file's own mip levels are used as they are. A KTX2 with a single level, or whose width or height is not a multiple of 4, comes as RGBA8 with mips made on the GPU, as a PNG does. ETC1S (BasisLZ) KTX2 files are not read yet: such an image is left out with a warning, like one that failed to decode. The workers are started by the first KTX2 image of a load and closed when its images are done; they need no cross-origin isolation.
+
 <a id="engine-unload"></a>
 ### `engine.unload(asset)` → `void`
 

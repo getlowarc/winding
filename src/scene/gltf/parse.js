@@ -745,6 +745,8 @@ const SUPPORTED_EXTENSIONS = new Set([
   // any normalization, so accepting it is all it asks.
   'KHR_mesh_quantization',
   'KHR_texture_transform',
+  // KTX2 images holding Basis UASTC, transcoded as they load (images.js).
+  'KHR_texture_basisu',
   'KHR_materials_unlit', 'KHR_materials_ior', 'KHR_materials_specular',
   'KHR_materials_clearcoat', 'KHR_materials_sheen',
   'KHR_materials_anisotropy', 'KHR_materials_iridescence',

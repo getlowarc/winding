@@ -32,11 +32,18 @@ const BITMAP_OPTIONS = { colorSpaceConversion: 'none', premultiplyAlpha: 'none' 
  * be decoded. A broken image is not fatal -- the material falls back to its
  * factor, which is a far better outcome than refusing to show the model.
  */
-export async function decodeImages(
-  json, buffers, { baseURL, fetchImpl = globalThis.fetch, maxDimension = Infinity, onImage = null } = {},
-) {
+export async function decodeImages(json, buffers, {
+  baseURL, fetchImpl = globalThis.fetch, maxDimension = Infinity, onImage = null,
+  ktx2Target = 'rgba', createTranscoder = null, transcoders = 1,
+} = {}) {
   const images = json.images ?? [];
   const used = usedImages(json);
+  // Started by the first KTX2 image, and closed when the last image is done.
+  let pool = null;
+  const transcode = (bytes) => {
+    pool ??= createTranscoder ? transcoderPool(createTranscoder, transcoders) : inlineTranscoder();
+    return pool.run(bytes, ktx2Target);
+  };
 
   return Promise.all(images.map(async (image, index) => {
     // Nothing samples it, so decoding it only costs memory -- and a file can
@@ -49,20 +56,64 @@ export async function decodeImages(
       // Sized from the header, before decoding. createImageBitmap decodes the
       // whole image first, so a 30000-pixel PNG of a few kilobytes cost gigabytes
       // before the texture's own size check ever ran.
-      const size = imageSize(new Uint8Array(await blob.arrayBuffer()));
-      if (size === null) throw new Error('is not PNG, JPEG or WebP');
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      const size = imageSize(bytes);
+      if (size === null) throw new Error('is not PNG, JPEG, WebP or KTX2');
       if (size.width > maxDimension || size.height > maxDimension) {
         throw new Error(`is ${size.width}x${size.height}, past this device's ${maxDimension}`);
       }
-      const bitmap = await createImageBitmap(blob, BITMAP_OPTIONS);
+      // A KTX2 image: { width, height, target, levels } from transcodeKTX2.
+      const decoded = size.ktx2 ? await transcode(bytes) : await createImageBitmap(blob, BITMAP_OPTIONS);
       // As each lands, so an uploader can start on it while the rest decode.
-      onImage?.(index, bitmap);
-      return bitmap;
+      onImage?.(index, decoded);
+      return decoded;
     } catch (error) {
       console.warn(`glTF: image ${index} (${image.name ?? image.uri ?? 'embedded'}) failed: ${error.message}`);
       return null;
     }
-  }));
+  })).finally(() => pool?.close());
+}
+
+/**
+ * Up to `size` workers transcoding KTX2 images, each made when an image is
+ * waiting and none is free. Plain workers and transferred buffers, so no
+ * cross-origin isolation is needed, unlike the job system's.
+ */
+function transcoderPool(createWorker, size) {
+  const idle = [], queue = [], workers = [];
+  const next = (worker) => {
+    const job = queue.shift();
+    if (!job) { idle.push(worker); return; }
+    worker.onmessage = ({ data }) => {
+      if (data.error) job.reject(new Error(data.error)); else job.resolve(data);
+      next(worker);
+    };
+    // A worker that fails (to start, say) fails what it was given and makes
+    // way for a new one, so the images queued behind it are not stranded.
+    worker.onerror = (event) => {
+      event.preventDefault?.();
+      job.reject(new Error(`the transcoder failed: ${event.message ?? 'no message'}`));
+      worker.terminate();
+      workers.splice(workers.indexOf(worker), 1);
+      if (queue.length) { const fresh = createWorker(); workers.push(fresh); next(fresh); }
+    };
+    worker.postMessage({ bytes: job.bytes, target: job.target }, [job.bytes.buffer]);
+  };
+  return {
+    run: (bytes, target) => new Promise((resolve, reject) => {
+      queue.push({ bytes, target, resolve, reject });
+      let worker = idle.pop();
+      if (!worker && workers.length < size) workers.push(worker = createWorker());
+      if (worker) next(worker);
+    }),
+    close: () => { for (const worker of workers) worker.terminate(); },
+  };
+}
+
+/** The same transcoding on this thread, where there are no workers: Node, and tests. */
+function inlineTranscoder() {
+  const module = import('../ktx2.js');
+  return { run: async (bytes, target) => (await module).transcodeKTX2(bytes, target), close() {} };
 }
 
 async function imageBlob(image, json, buffers, { baseURL, fetchImpl, index }) {
@@ -174,15 +225,22 @@ export function imageColorSpaces(json) {
 }
 
 /**
- * Width and height from an image's header, or null if it is none of the three
- * formats glTF allows: PNG and JPEG in the core spec, WebP by EXT_texture_webp.
- * Enough of each header to find the size and nothing more.
+ * Width and height from an image's header, or null if it is none of the
+ * formats glTF allows: PNG and JPEG in the core spec, WebP by EXT_texture_webp,
+ * KTX2 by KHR_texture_basisu (marked `ktx2: true`). Enough of each header to
+ * find the size and nothing more.
  */
 export function imageSize(bytes) {
   const u16be = (i) => (bytes[i] << 8) | bytes[i + 1];
   const u32be = (i) => ((bytes[i] << 24) >>> 0) + (bytes[i + 1] << 16) + (bytes[i + 2] << 8) + bytes[i + 3];
   const u24le = (i) => bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16);
   const ascii = (i, n) => String.fromCharCode(...bytes.subarray(i, i + n));
+
+  // KTX2: its 12-byte identifier, then the header's pixelWidth and pixelHeight (0 for 1D).
+  if (bytes.length >= 28 && bytes[0] === 0xab && ascii(1, 6) === 'KTX 20' && bytes[7] === 0xbb) {
+    const u32le = (i) => (bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24)) >>> 0;
+    return { width: u32le(20), height: Math.max(1, u32le(24)), ktx2: true };
+  }
 
   // PNG: the signature, then IHDR -- always the first chunk.
   if (bytes.length >= 24 && bytes[0] === 0x89 && ascii(1, 3) === 'PNG' && ascii(12, 4) === 'IHDR') {
@@ -222,12 +280,15 @@ export function imageSize(bytes) {
   return null;
 }
 
-/** The image index a texture points at, or -1. */
+/**
+ * The image index a texture points at, or -1: its KTX2 one (KHR_texture_basisu)
+ * where it has one, ahead of the PNG or JPEG `source` kept for other readers.
+ */
 export function textureImageIndex(json, textureIndex) {
   if (textureIndex === undefined || textureIndex < 0) return -1;
   const texture = json.textures?.[textureIndex];
   if (!texture) return -1;
-  return texture.source ?? -1;
+  return texture.extensions?.KHR_texture_basisu?.source ?? texture.source ?? -1;
 }
 
 export function textureSamplerIndex(json, textureIndex) {

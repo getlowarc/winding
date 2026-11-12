@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   times a pixel to keep its texture sharp; on a weaker GPU that is a real share of the frame --
   textured Sponza at 1280x720 on Iris Xe draws about 13% faster at 1 than at 16 -- and now a game can
   choose. Fixed at creation.
+- **KTX2 textures (`KHR_texture_basisu`), in Basis UASTC.** `engine.load` reads them and transcodes
+  each, on workers, to what the GPU samples: ASTC 4x4 where the device has it, losing nothing, else
+  BC7, else RGBA8. A block-compressed texture is a quarter of the memory, uses the mips the file
+  carries instead of making them, and is cheaper to sample. The container, its zstd
+  supercompression and the transcoder are Winding's own, no dependency, and every block is the one
+  Basis Universal's transcoder writes, ASTC, BC7 and RGBA alike. A file's PNG fallback is no longer
+  fetched. ETC1S (BasisLZ) files are not read yet.
 
 ### Changed
 

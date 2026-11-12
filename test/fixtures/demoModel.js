@@ -471,6 +471,8 @@ export function buildFeatureGLB({
   doubleSided = false,
   // Images after the base colour and normal ones, for extension textures.
   extraImageURIs = [],
+  // The images are KTX2, named by KHR_texture_basisu with no fallback, and mipped.
+  basisu = false,
 } = {}) {
   const S = 1.6;
   const corners = [[-S, -S], [S, -S], [S, S], [-S, S]];
@@ -564,9 +566,59 @@ export function buildFeatureGLB({
     json.images = uris.map((uri) => ({ uri }));
     json.samplers = [{ magFilter: 9728, minFilter: 9728 }];   // NEAREST, so halves stay crisp
     json.textures = uris.map((_, i) => ({ source: i, sampler: 0 }));
+    if (basisu) {
+      json.samplers = [{}];
+      json.textures = uris.map((_, i) => ({ sampler: 0, extensions: { KHR_texture_basisu: { source: i } } }));
+      for (const list of ['extensionsUsed', 'extensionsRequired']) json[list] = [...(json[list] ?? []), 'KHR_texture_basisu'];
+    }
   }
 
   return encodeGLB(json, bytes);
+}
+
+/**
+ * A KTX2 file of Basis UASTC as a data URI, `size` square and one level per
+ * colour in `levels` (RGBA8 each), every block of a level the solid-colour
+ * mode: so which level a sample came from is the colour it reads. Laid out as
+ * the KTX2 spec has it: identifier, header, index, level index, the Data
+ * Format Descriptor (UASTC, sRGB, RGBA), then the levels smallest first.
+ */
+export function solidKTX2URI(size, levels) {
+  const data = levels.map(([r, g, b, a], i) => {
+    const side = Math.max(1, size >> i), blocks = Math.ceil(side / 4) ** 2;
+    // Mode 8's Huffman code (5 bits, 0b10111), then R, G, B and A from bit 5.
+    const block = new Uint8Array(16);
+    const bits = 0b10111 + r * 2 ** 5 + g * 2 ** 13 + b * 2 ** 21 + a * 2 ** 29;
+    for (let k = 0; k < 5; k++) block[k] = Math.floor(bits / 2 ** (8 * k)) & 255;
+    const level = new Uint8Array(blocks * 16);
+    for (let k = 0; k < blocks; k++) level.set(block, k * 16);
+    return level;
+  });
+  const dfd = new Uint8Array(4 + 24 + 16);
+  const dv = new DataView(dfd.buffer);
+  dv.setUint32(0, dfd.length, true);
+  dv.setUint16(4 + 6, 24 + 16, true);
+  dfd.set([166, 1, 2, 0], 4 + 8);   // UASTC, BT.709 primaries, sRGB, straight alpha
+  dfd[4 + 24 + 3] = 3;              // RGBA
+  const levelIndex = 80, dfdAt = levelIndex + data.length * 24;
+  let at = dfdAt + dfd.length;
+  const offsets = [];
+  for (let i = data.length - 1; i >= 0; i--) { at = Math.ceil(at / 16) * 16; offsets[i] = at; at += data[i].length; }
+  const file = new Uint8Array(at);
+  const v = new DataView(file.buffer);
+  file.set([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb, 0x0d, 0x0a, 0x1a, 0x0a]);
+  [0, 1, size, size, 0, 0, 1, data.length, 0].forEach((x, i) => v.setUint32(12 + i * 4, x, true));
+  v.setUint32(48, dfdAt, true); v.setUint32(52, dfd.length, true);
+  data.forEach((level, i) => {
+    v.setBigUint64(levelIndex + i * 24, BigInt(offsets[i]), true);
+    v.setBigUint64(levelIndex + i * 24 + 8, BigInt(level.length), true);
+    v.setBigUint64(levelIndex + i * 24 + 16, BigInt(level.length), true);
+    file.set(level, offsets[i]);
+  });
+  file.set(dfd, dfdAt);
+  let binary = '';
+  for (const byte of file) binary += String.fromCharCode(byte);
+  return `data:image/ktx2;base64,${btoa(binary)}`;
 }
 
 /** A 2x1 PNG as a data URI: left half one colour, right half another. */

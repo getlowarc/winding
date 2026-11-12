@@ -552,6 +552,14 @@ export class Winding {
           const spaces = imageColorSpaces(json);
           decoding = decodeImages(json, ready, {
             baseURL, fetchImpl, maxDimension: limits.maxTextureDimension2D,
+            // KTX2 images transcoded on workers, to what this device samples:
+            // ASTC first, since UASTC goes to it with nothing lost, then BC7.
+            ktx2Target: this.gpu.features.has('texture-compression-astc') ? 'astc'
+              : this.gpu.features.has('texture-compression-bc') ? 'bc7' : 'rgba',
+            createTranscoder: () => createModuleWorker(new URL('../scene/gltf/ktx2Worker.js', import.meta.url)),
+            // A core each but this thread's: unlike the job system's, these
+            // wait on messages, never spin, so its cap of 7 does not apply.
+            transcoders: Math.max(1, (navigator.hardwareConcurrency ?? 4) - 1),
             onImage: (index, bitmap) => { if (!this._destroyed) textures.upload(index, bitmap, spaces.get(index)); },
           });
         },

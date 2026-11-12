@@ -6,11 +6,36 @@
 // noticing.
 
 import {
-  createTexture2D, uploadImage, generateMipmaps, linearSampler,
+  createTexture, createTexture2D, uploadImage, generateMipmaps, linearSampler,
 } from '../rhi/texture.js';
 import {
   materialTextureSlots, samplerDescriptor, textureImageIndex, textureSamplerIndex, imageColorSpaces,
 } from '../scene/gltf/images.js';
+
+/** WebGPU's formats for transcodeKTX2's targets, sRGB by appending '-srgb'. */
+const KTX2_FORMATS = { astc: 'astc-4x4-unorm', bc7: 'bc7-rgba-unorm', rgba: 'rgba8unorm' };
+
+/**
+ * A transcoded KTX2 image's levels, as the file made them. A block format's
+ * rows are rows of 4x4 blocks, 16 bytes each, and a level smaller than a block
+ * is still one: the copy is the level's size in whole blocks. Both kinds come
+ * to 4 bytes a texel of that size a row.
+ */
+function uploadLevels(rhi, image, srgb, label) {
+  const block = image.target !== 'rgba';
+  const texture = createTexture(rhi, {
+    label,
+    size: [image.width, image.height],
+    format: KTX2_FORMATS[image.target] + (srgb ? '-srgb' : ''),
+    mipLevelCount: image.levels.length,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+  });
+  image.levels.forEach(({ width, height, data }, mipLevel) => {
+    if (block) { width = Math.ceil(width / 4) * 4; height = Math.ceil(height / 4) * 4; }
+    rhi.queue.writeTexture({ texture, mipLevel }, data, { bytesPerRow: width * 4 }, [width, height]);
+  });
+  return texture;
+}
 
 /**
  * Uploads on demand and caches, so an image shared by twenty materials is
@@ -72,18 +97,20 @@ export class GLTFTextures {
     let texture = this._textures.get(key);
     if (texture) return texture;
 
-    texture = createTexture2D(this.rhi, {
-      label: `gltf-image-${imageIndex}${srgb ? '-srgb' : ''}`,
-      width: bitmap.width,
-      height: bitmap.height,
-      srgb,
-      mipmapped: true,
-    });
-    uploadImage(this.rhi, texture, bitmap);
-    // Mips are averaged through an -srgb view when the format is sRGB, so the
-    // filtering happens in linear light without any manual conversion. By
-    // coverage only where alpha is coverage: elsewhere a clear block went black.
-    generateMipmaps(this.rhi, texture, { coverage: srgb && this._coverage.has(imageIndex) });
+    const label = `gltf-image-${imageIndex}${srgb ? '-srgb' : ''}`;
+    if (bitmap.levels?.length > 1) {
+      texture = uploadLevels(this.rhi, bitmap, srgb, label);
+    } else {
+      texture = createTexture2D(this.rhi, { label, width: bitmap.width, height: bitmap.height, srgb, mipmapped: true });
+      // A KTX2 image of one level comes as RGBA8 (transcodeKTX2), to be mipped here like any other.
+      if (bitmap.levels) {
+        this.rhi.queue.writeTexture({ texture }, bitmap.levels[0].data, { bytesPerRow: bitmap.width * 4 }, [bitmap.width, bitmap.height]);
+      } else uploadImage(this.rhi, texture, bitmap);
+      // Mips are averaged through an -srgb view when the format is sRGB, so the
+      // filtering happens in linear light without any manual conversion. By
+      // coverage only where alpha is coverage: elsewhere a clear block went black.
+      generateMipmaps(this.rhi, texture, { coverage: srgb && this._coverage.has(imageIndex) });
+    }
 
     this._textures.set(key, texture);
     this.uploaded++;

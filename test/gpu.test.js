@@ -20,7 +20,7 @@ import { CLUSTER_Z, MAX_LIGHTS_PER_CLUSTER } from '../src/render/clustered.js';
 import { shaderErrors } from '../src/rhi/shader.js';
 import { NOT_BATCHED, DRAW_DATA_BYTES } from '../src/render/gpudriven.js';
 import {
-  buildDemoGLB, buildRiggedGLB, buildMorphedGLB, buildFeatureGLB, buildLodGLB, twoToneImageURI,
+  buildDemoGLB, buildRiggedGLB, buildMorphedGLB, buildFeatureGLB, buildLodGLB, twoToneImageURI, solidKTX2URI,
 } from './fixtures/demoModel.js';
 import { pbrShader } from '../src/render/shaders/pbr.js';
 import { soak, SCENARIOS } from './fixtures/soak.js';
@@ -1115,6 +1115,53 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     }
 
     return `${results.length} features drawn and read back`;
+  });
+
+  await step('a KTX2 texture loads in the block format the GPU has, every level, and draws as its PNG does', async () => {
+    // Each level one solid colour, built byte by byte (no encoder in a browser test).
+    const COLOURS = [[200, 60, 30, 255], [30, 200, 60, 255], [60, 30, 200, 255], [90, 90, 90, 255]];
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '64px';
+    canvas.style.height = '64px';
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas, { antialias: false, post: { strength: 0 } });
+    try {
+      probe.gpu.device.pushErrorScope('validation');
+      probe.gpu.resize(64, 64);
+      const { features } = probe.gpu;
+      const expected = features.has('texture-compression-astc') ? 'astc-4x4-unorm-srgb'
+        : features.has('texture-compression-bc') ? 'bc7-rgba-unorm-srgb' : 'rgba8unorm-srgb';
+      const unlit = { baseColorFactor: [1, 1, 1, 1], materialExtensions: { KHR_materials_unlit: {} } };
+      // Through engine.load, so through the real worker (ktx2Worker.js) too.
+      const ktx2 = await probe.load(buildFeatureGLB({ ...unlit, imageURI: solidKTX2URI(8, COLOURS), basisu: true }));
+      const made = [...ktx2.textures._textures.values()];
+      if (made.length !== 1 || made[0].format !== expected || made[0].mipLevelCount !== 4) {
+        throw new Error(`made ${made.map((t) => `${t.format} x${t.mipLevelCount}`).join(', ')}, not one ${expected} of 4 levels`);
+      }
+      const png = await probe.load(buildFeatureGLB({ ...unlit, imageURI: twoToneImageURI(`rgb(${COLOURS[0].slice(0, 3)})`, `rgb(${COLOURS[0].slice(0, 3)})`) }));
+      const cam = new Camera({ fovY: 1.0, near: 0.1 });
+      cam.position.set([0, 0, 2]);
+      cam.target.set([0, 0, 0]);
+      const centre = async (asset) => {
+        const scene = probe.createScene();
+        scene.add(asset);
+        probe.renderFrame(scene, cam);
+        const pixels = await probe.gpu.readPixels();
+        const i = (32 * 64 + 32) * 4;
+        return [pixels[i], pixels[i + 1], pixels[i + 2]];
+      };
+      const fromKTX2 = await centre(ktx2), fromPNG = await centre(png);
+      // ASTC's solid block is the colour exactly; BC7's is as near as its endpoints come.
+      if (fromKTX2.some((c, k) => Math.abs(c - fromPNG[k]) > 2)) {
+        throw new Error(`the KTX2 drew ${fromKTX2}, its PNG ${fromPNG}`);
+      }
+      const error = await probe.gpu.device.popErrorScope();
+      if (error) throw new Error(`validation: ${error.message}`);
+      return `${expected}, 4 levels; drew ${fromKTX2} where the PNG drew ${fromPNG}`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
   });
 
   await step('two directional lights each cast their own shadow', async () => {

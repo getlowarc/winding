@@ -439,10 +439,10 @@ These are real and currently unaddressed.
   Anything not coincident renders identically every frame. A fixed order would need a prefix-sum
   compaction — more passes, every frame, for every scene — to hold still an artifact that is a
   content error either way.
-- **Textures are decoded to full size in GPU memory.** Compressed GPU texture formats
-  (`KHR_texture_basisu`, KTX2) aren't read yet, so a texture takes 4 bytes a texel, plus its mips,
-  however it was shipped, and a file that requires KTX2 is refused. Draco geometry is refused too:
-  meshopt does the same job and is read, and `gltf-transform meshopt` converts one to the other.
+- **KTX2 textures in ETC1S aren't read yet.** UASTC ones (`KHR_texture_basisu`) are, transcoded to
+  ASTC or BC7 at a byte a texel; an ETC1S image is left out and its material uses its factor, and
+  PNG, JPEG and WebP still take 4 bytes a texel, plus mips. Draco geometry is refused: meshopt does
+  the same job and is read, and `gltf-transform meshopt` converts one to the other.
 - **A 3D camera doesn't draw tilemaps, shapes or paths, and a HUD doesn't draw
   particles.** The particle system follows one scene's emitters at a time.
 - **2D lights cast no shadows and read no normal maps.** Every light is checked at every lit pixel,

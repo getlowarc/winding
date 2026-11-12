@@ -7,8 +7,9 @@
 
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
-import { readKTX2, KTX2_NONE, KTX2_BASISLZ, KTX2_ZSTD } from '../src/scene/ktx2.js';
-import { loadBasis, encodeUASTC } from './fixtures/basis.mjs';
+import { readKTX2, transcodeKTX2, KTX2_NONE, KTX2_BASISLZ, KTX2_ZSTD } from '../src/scene/ktx2.js';
+import { uastcToRGBA, uastcToBC7, uastcToASTC } from '../src/scene/uastc.js';
+import { loadBasis, encodeUASTC, transcodeReference } from './fixtures/basis.mjs';
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log(`  ok  ${name}`); }
@@ -111,6 +112,48 @@ test('what is not a KTX2 file, or not one this reads, says so', () => {
   assert.throws(() => readKTX2(ktx2({ width: 4, height: 4, levels: [bytes(8)], model: 163 })), /ETC1S without BasisLZ/);
 });
 
+// Solid-colour UASTC blocks (mode 8), so these need no encoder: a 4x4 block each.
+const solidLevels = (w, h, count) => Array.from({ length: count }, (_, l) => {
+  const blocks = Math.ceil(Math.max(1, w >> l) / 4) * Math.ceil(Math.max(1, h >> l) / 4);
+  const level = new Uint8Array(blocks * 16);
+  for (let b = 0; b < blocks; b++) level.set([0b10111 | ((40 * l) << 5) & 255, (40 * l) >> 3, 0, 0, 0], b * 16);
+  return level;
+});
+
+test('transcoding a file gives each level in the format asked, as the block transcoders write it', () => {
+  const levels = solidLevels(16, 8, 5);
+  const file = ktx2({ width: 16, height: 8, levels, scheme: KTX2_ZSTD });
+  for (const [target, transcode] of [['astc', uastcToASTC], ['bc7', uastcToBC7], ['rgba', uastcToRGBA]]) {
+    const image = transcodeKTX2(file, target);
+    assert.deepEqual([image.width, image.height, image.target], [16, 8, target]);
+    assert.equal(image.levels.length, 5, `${target}: every level the file has`);
+    image.levels.forEach((level, l) => {
+      assert.deepEqual([level.width, level.height], [Math.max(1, 16 >> l), Math.max(1, 8 >> l)]);
+      assert.deepEqual(level.data, transcode(levels[l], level.width, level.height), `${target}, level ${l}`);
+    });
+  }
+});
+
+test('one level, or a size that is not whole blocks, comes as RGBA8, for mips the GPU can make', () => {
+  const one = transcodeKTX2(ktx2({ width: 8, height: 8, levels: solidLevels(8, 8, 1) }), 'bc7');
+  assert.equal(one.target, 'rgba');
+  assert.equal(one.levels.length, 1);
+  assert.equal(one.levels[0].data.length, 8 * 8 * 4);
+  const odd = transcodeKTX2(ktx2({ width: 6, height: 4, levels: solidLevels(6, 4, 3) }), 'astc');
+  assert.equal(odd.target, 'rgba');
+  assert.deepEqual(odd.levels.map((l) => l.data.length), [6 * 4 * 4, 3 * 2 * 4, 1 * 1 * 4], "the file's own mips, texel for texel");
+});
+
+test('what transcoding does not read yet, or cannot, says so', () => {
+  const etc1s = ktx2({ width: 8, height: 8, levels: [bytes(40)], scheme: KTX2_BASISLZ, model: 163, globalData: bytes(36) });
+  assert.throws(() => transcodeKTX2(etc1s, 'bc7'), /ktx2: ETC1S \(BasisLZ\) is not read yet, only UASTC/);
+  const bc7 = ktx2({ vkFormat: 145, width: 8, height: 8, levels: [bytes(64)], model: 128 });
+  assert.throws(() => transcodeKTX2(bc7, 'bc7'), /ktx2: not Basis Universal/);
+  const cube = ktx2({ width: 4, height: 4, levels: solidLevels(4, 4, 1) });
+  new DataView(cube.buffer).setUint32(36, 6, true);
+  assert.throws(() => transcodeKTX2(cube, 'rgba'), /ktx2: not a 2D image/);
+});
+
 if (B === null) {
   console.log("  --  skipped: files from Basis's own encoder (npm run fetch:basis to run it)");
 } else {
@@ -131,6 +174,17 @@ if (B === null) {
     assert.equal(linear.srgb, false);
     assert.equal(linear.channels, 'rgb', 'opaque: no alpha channel');
     assert.equal(linear.levels.length, 1);
+  });
+
+  test("a whole file transcoded is what Basis's own transcoder makes of it, level by level", () => {
+    const w = 64, h = 32, rgba = new Uint8Array(w * h * 4);
+    for (let i = 0; i < rgba.length; i += 4) { rgba[i] = (i * 7) % 256; rgba[i + 1] = (i >> 4) % 256; rgba[i + 2] = 90; rgba[i + 3] = 255 - ((i >> 6) % 256); }
+    const file = encodeUASTC(B, rgba, w, h);
+    for (const [target, format] of [['astc', 'cTFASTC_4x4_RGBA'], ['bc7', 'cTFBC7_RGBA'], ['rgba', 'cTFRGBA32']]) {
+      transcodeKTX2(file.slice(), target).levels.forEach((level, l) => {
+        assert.deepEqual(level.data, transcodeReference(B, file, l, format), `${target}, level ${l}`);
+      });
+    }
   });
 }
 
