@@ -17,9 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **KTX2 textures (`KHR_texture_basisu`), in Basis UASTC.** `engine.load` reads them and makes each
   what the GPU samples: ASTC 4x4 where the device has it, losing nothing, else BC7, else RGBA8.
   Workers undo the file's zstd and a compute shader transcodes, so the load costs little more than
-  PNG's: Sponza's 69 images at 1280x720 on Iris Xe load in 0.59 s as KTX2 and 0.45 s as shipped,
-  in a quarter of the texture memory (95 MB, not 380), with the mips the file carries instead of
-  made ones. The container, its zstd and the transcoder are Winding's own, no dependency, and every
+  PNG's. Sponza with its 69 images as UASTC, on Iris Xe at 1280x720, against as shipped: a quarter
+  of the texture memory (95 MB, not 380), the GPU frame 12% shorter (the forward pass 13%), a load
+  of 0.55 s against 0.47 (the first, cold one 1.2 s against 1.7), and the mips the file carries
+  instead of made ones. The container, its zstd and the transcoder are Winding's own, no dependency, and every
   block is the one Basis Universal's transcoder writes, on the CPU and the GPU alike. A file's PNG
   fallback is no longer fetched. ETC1S (BasisLZ) files, Basis's smaller mode, are read too, on the
   workers, to ASTC or BC7 as Basis's transcoder writes them: a 1024x1024 texture with mips in 24 ms
