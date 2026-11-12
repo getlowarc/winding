@@ -326,3 +326,492 @@ export function etc1sToRGBA(global, slice, alpha, width, height) {
   }
   return out;
 }
+
+// ---- to BC7 (mode 5), as Basis Universal's transcoder writes it --------
+//
+// Ported from basisu_transcoder.cpp (Apache-2.0, Binomial LLC): its ETC1S to
+// BC7 mode 5 conversion (convert_etc1s_to_bc7_m5_color and _alpha), its
+// default chroma filter (chroma_filter_bc7_mode5) and the real-time mode 5
+// encoder that filter re-encodes with. Its conversion tables are not copied:
+// each entry is worked out here, when first used, by the same search Basis
+// ran to make them (create_etc1_to_bc7_m5_color/alpha_conversion_table).
+// test/etc1s.test.js holds the result to Basis's own output, block for block.
+
+const f = Math.fround;
+const expand5 = (v) => (v << 3) | (v >> 2);
+const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+const SELECTOR_RANGES = [[0, 3], [1, 3], [0, 2], [1, 2], [2, 3], [0, 1]];
+const RANGE_INDEX = [[-1, 5, 2, 0], [-1, -1, 3, 1], [-1, -1, -1, 4], [-1, -1, -1, -1]];
+const MAPPINGS = [[0, 0, 1, 1], [0, 0, 1, 2], [0, 0, 1, 3], [0, 0, 2, 3], [0, 1, 1, 1],
+  [0, 1, 2, 2], [0, 1, 2, 3], [0, 2, 3, 3], [1, 2, 2, 2], [1, 2, 3, 3]];
+
+/** Per selector entry: its lowest and highest selector and how many differ. */
+function selectorFlags(global) {
+  if (global.selectorFlags) return global.selectorFlags;
+  const s = global.selectors, n = global.selectorCount;
+  const lo = new Uint8Array(n), hi = new Uint8Array(n), unique = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    let seen = 0;
+    for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) seen |= 1 << ((s[i * 4 + y] >> (2 * x)) & 3);
+    lo[i] = 31 - Math.clz32(seen & -seen);
+    hi[i] = 31 - Math.clz32(seen);
+    unique[i] = (seen & 1) + ((seen >> 1) & 1) + ((seen >> 2) & 1) + ((seen >> 3) & 1);
+  }
+  return (global.selectorFlags = { lo, hi, unique });
+}
+
+/** g_bc7_m5_equals_1: for each 8-bit value, the 7-bit endpoints whose index-1 colour comes closest. */
+let EQUALS_1 = null;
+export function equals1() {
+  if (EQUALS_1) return EQUALS_1;
+  EQUALS_1 = new Uint8Array(512);   // [value * 2] = lo, [value * 2 + 1] = hi
+  for (let i = 0; i < 256; i++) {
+    let lowest = 256;
+    for (let lo = 0; lo < 128; lo++) {
+      for (let hi = 0; hi < 128; hi++) {
+        const e = Math.abs(((((lo << 1) | (lo >> 6)) * 43 + ((hi << 1) | (hi >> 6)) * 21 + 32) >> 6) - i);
+        if (e < lowest) { lowest = e; EQUALS_1[i * 2] = lo; EQUALS_1[i * 2 + 1] = hi; }
+      }
+    }
+  }
+  return EQUALS_1;
+}
+
+/** The colour table's ten mappings for (intensity, 5-bit value, selector range): lo, hi, err each. */
+const COLOUR_TABLE = new Map();
+export function colourSolutions(inten, g, range) {
+  const key = (inten * 32 + g) * 6 + range;
+  let solutions = COLOUR_TABLE.get(key);
+  if (solutions) return solutions;
+  solutions = new Uint16Array(30);
+  const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
+  const block = table.map((m) => clamp255(base + m));
+  const heavy = inten === 7 && low === 0 && high === 3;
+  const colours = [0, 0, 0, 0];
+  for (let m = 0; m < 10; m++) {
+    const map = MAPPINGS[m];
+    let bestLo = 0, bestHi = 0, best = Infinity;
+    for (let hi = 0; hi < 128; hi++) {
+      const c3 = (hi << 1) | (hi >> 6);
+      for (let lo = 0; lo < 128; lo++) {
+        const c0 = (lo << 1) | (lo >> 6);
+        colours[0] = c0; colours[3] = c3;
+        colours[1] = (c0 * 43 + c3 * 21 + 32) >> 6;
+        colours[2] = (c0 * 21 + c3 * 43 + 32) >> 6;
+        let err = 0;
+        for (let s = low; s <= high; s++) {
+          const d = block[s] - colours[map[s]];
+          err += d * d * (heavy && (s === 0 || s === 3) ? 5 : 1);
+        }
+        if (err < best) { best = err; bestLo = lo; bestHi = hi; }
+      }
+    }
+    solutions[m * 3] = bestLo; solutions[m * 3 + 1] = bestHi; solutions[m * 3 + 2] = Math.min(best, 0xffff);
+  }
+  COLOUR_TABLE.set(key, solutions);
+  return solutions;
+}
+
+/** The alpha table entry for (intensity, 5-bit value, selector range): [lo, hi, selector translation]. */
+const ALPHA_TABLE = new Map();
+export function alphaSolution(inten, g, range) {
+  const key = (inten * 32 + g) * 6 + range;
+  let solution = ALPHA_TABLE.get(key);
+  if (solution) return solution;
+  const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
+  const block = table.map((m) => clamp255(base + m));
+  const heavy = inten === 7 && low === 0 && high === 3;
+  let best = Infinity;
+  solution = [0, 0, 0];
+  const colours = [0, 0, 0, 0];
+  for (let hi = 0; hi < 256; hi++) {
+    for (let lo = 0; lo < 256; lo++) {
+      colours[0] = lo; colours[3] = hi;
+      colours[1] = (lo * 43 + hi * 21 + 32) >> 6;
+      colours[2] = (lo * 21 + hi * 43 + 32) >> 6;
+      let total = 0, selectors = 0;
+      for (let s = low; s <= high; s++) {
+        let bestMapping = Infinity, bestK = 0;
+        for (let k = 0; k < 4; k++) {
+          let e = block[s] - colours[k];
+          e *= e;
+          if (heavy && (s === 0 || s === 3)) e *= 5;
+          if (e < bestMapping) { bestMapping = e; bestK = k; }
+        }
+        total += bestMapping;
+        selectors |= bestK << (s * 2);
+      }
+      if (total < best) { best = total; solution = [lo, hi, selectors]; }
+    }
+  }
+  ALPHA_TABLE.set(key, solution);
+  return solution;
+}
+
+// A BC7 block being written: 128 bits as four 32-bit words, LSB first.
+const BLK = new Int32Array(5);
+/** `bits` (at most 31) of `value` at bit `at`, replacing what was there. */
+function setBits(value, bits, at) {
+  const w = at >> 5, s = at & 31, mask = bits === 32 ? -1 : (1 << bits) - 1;
+  BLK[w] = (BLK[w] & ~(mask << s)) | ((value & mask) << s);
+  if (s + bits > 32) {
+    const n = 32 - s;
+    BLK[w + 1] = (BLK[w + 1] & ~(mask >>> n)) | ((value & mask) >>> n);
+  }
+}
+function getBits(bits, at) {
+  const w = at >> 5, s = at & 31;
+  let v = BLK[w] >>> s;
+  if (s + bits > 32) v |= BLK[w + 1] << (32 - s);
+  return (v & ((1 << bits) - 1)) >>> 0;
+}
+function loadBlock(out, o) {
+  for (let w = 0; w < 4; w++) BLK[w] = out[o + w * 4] | (out[o + w * 4 + 1] << 8) | (out[o + w * 4 + 2] << 16) | (out[o + w * 4 + 3] << 24);
+}
+function storeBlock(out, o) {
+  for (let k = 0; k < 16; k++) out[o + k] = BLK[k >> 2] >>> ((k & 3) * 8);
+}
+// Mode 5's fields: R0 R1 G0 G1 B0 B1 from bit 8, 7 bits each; A0 at 50 and A1 at 58, 8 bits each.
+function setColour(r0, g0, b0, r1, g1, b1) {
+  setBits(r0, 7, 8); setBits(r1, 7, 15); setBits(g0, 7, 22); setBits(g1, 7, 29); setBits(b0, 7, 36); setBits(b1, 7, 43);
+}
+function setAlpha(a0, a1) { setBits(a0, 8, 50); setBits(a1, 8, 58); }
+
+/** convert_etc1s_to_bc7_m5_color: the block into BLK, opaque. */
+function bc7Colour(global, flags, e, sel) {
+  BLK.fill(0);
+  setBits(1 << 5, 6, 0);
+  setAlpha(255, 255);
+  const { colour, intensity } = global.endpoints;
+  const r5 = colour[e * 3], g5 = colour[e * 3 + 1], b5 = colour[e * 3 + 2], inten = intensity[e];
+  const low = flags.lo[sel], high = flags.hi[sel], rows = global.selectors, row0 = sel * 4;
+  const table = INTENSITY[inten];
+  const colourOf = (c5, s) => clamp255(expand5(c5) + table[s]);
+  const selectorAt = (x, y) => (rows[row0 + y] >> (2 * x)) & 3;
+  if (flags.unique[sel] === 1) {
+    const q = equals1();
+    const r = colourOf(r5, low), g = colourOf(g5, low), b = colourOf(b5, low);
+    setColour(q[r * 2], q[g * 2], q[b * 2], q[r * 2 + 1], q[g * 2 + 1], q[b * 2 + 1]);
+    setBits(0x2aaaaaab, 31, 66);
+    return;
+  }
+  if (flags.unique[sel] === 2) {
+    const c0 = [colourOf(r5, low), colourOf(g5, low), colourOf(b5, low)];
+    const c1 = [colourOf(r5, high), colourOf(g5, high), colourOf(b5, high)];
+    setColour(c0[0] >> 1, c0[1] >> 1, c0[2] >> 1, c1[0] >> 1, c1[1] >> 1, c1[2] >> 1);
+    let outLow = 0, offset = 0, bits = 0;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        let os = selectorAt(x, y) === low ? outLow : 3 ^ outLow;
+        let n = 2;
+        if ((x | y) === 0) {
+          if (os & 2) {
+            setColour(c1[0] >> 1, c1[1] >> 1, c1[2] >> 1, c0[0] >> 1, c0[1] >> 1, c0[2] >> 1);
+            outLow = 3;
+            os = 0;
+          }
+          n = 1;
+        }
+        bits |= os << offset;
+        offset += n;
+      }
+    }
+    setBits(bits >>> 0, 31, 66);
+    return;
+  }
+  const range = RANGE_INDEX[low][high];
+  const tr = colourSolutions(inten, r5, range), tg = colourSolutions(inten, g5, range), tb = colourSolutions(inten, b5, range);
+  let best = Infinity, mapping = 0;
+  for (let m = 0; m < 10; m++) {
+    const err = tr[m * 3 + 2] + tg[m * 3 + 2] + tb[m * 3 + 2];
+    if (err < best) { best = err; mapping = m; }
+  }
+  const xlat = MAPPINGS[mapping], o = mapping * 3;
+  let inv = 0;
+  if (xlat[selectorAt(0, 0)] & 2) {
+    setColour(tr[o + 1], tg[o + 1], tb[o + 1], tr[o], tg[o], tb[o]);
+    inv = 3;
+  } else setColour(tr[o], tg[o], tb[o], tr[o + 1], tg[o + 1], tb[o + 1]);
+  let bits = 0, offset = 0;
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      bits |= (xlat[selectorAt(x, y)] ^ inv) << offset;
+      offset += (x | y) === 0 ? 1 : 2;
+    }
+  }
+  setBits(bits >>> 0, 31, 66);
+}
+
+/** convert_etc1s_to_bc7_m5_alpha: alpha from an alpha slice's block, into BLK. */
+function bc7Alpha(global, flags, e, sel) {
+  const { colour, intensity } = global.endpoints;
+  const r5 = colour[e * 3], g5 = colour[e * 3 + 1], inten = intensity[e];
+  const low = flags.lo[sel], high = flags.hi[sel], rows = global.selectors;
+  const selectorAt = (x, y) => (rows[sel * 4 + y] >> (2 * x)) & 3;
+  const table = INTENSITY[inten];
+  if (flags.unique[sel] === 1) {
+    const r = clamp255(expand5(r5) + table[low]);
+    setAlpha(r, r);
+    return;
+  }
+  if (flags.unique[sel] === 2) {
+    const g = table.map((m) => clamp255(expand5(g5) + m));
+    setAlpha(g[low], g[high]);
+    let outLow = 0, offset = 0, bits = 0;
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        let os = selectorAt(x, y) === low ? outLow : 3 ^ outLow;
+        let n = 2;
+        if ((x | y) === 0) {
+          if (os & 2) { setAlpha(g[high], g[low]); outLow = 3; os = 0; }
+          n = 1;
+        }
+        bits |= os << offset;
+        offset += n;
+      }
+    }
+    setBits(bits >>> 0, 31, 97);
+    return;
+  }
+  const [lo, hi, trans] = alphaSolution(inten, r5, RANGE_INDEX[low][high]);
+  setAlpha(lo, hi);
+  let translation = trans, offset = 0, bits = 0;
+  for (let y = 0; y < 4; y++) {
+    for (let x = 0; x < 4; x++) {
+      let os = (translation >> (selectorAt(x, y) * 2)) & 3;
+      let n = 2;
+      if ((x | y) === 0) {
+        if (os & 2) { setAlpha(hi, lo); translation ^= 0xff; os ^= 3; }
+        n = 1;
+      }
+      bits |= os << offset;
+      offset += n;
+    }
+  }
+  setBits(bits >>> 0, 31, 97);
+}
+
+// ---- the real-time mode 5 encoder the chroma filter re-encodes with (bc7_mode_5_encoder)
+
+let MIDPOINTS = null;
+function midpoints() {
+  if (MIDPOINTS) return MIDPOINTS;
+  MIDPOINTS = new Float32Array(128);
+  for (let i = 0; i < 128; i++) {
+    let vl = i << 1; vl |= vl >> 7;
+    let vh = Math.min(127, i + 1) << 1; vh |= vh >> 7;
+    MIDPOINTS[i] = i === 127 ? 1e15 : f(f(f(vl / 255) + f(vh / 255)) / 2);
+  }
+  return MIDPOINTS;
+}
+function toSeven(c) {
+  const vl = Math.trunc(f(c * 127));
+  return Math.min(127, Math.max(0, vl + (c > MIDPOINTS[vl] ? 1 : 0)));
+}
+const toSevenFrom8 = (c8) => toSeven(f(c8 * f(1 / 255)));
+const from7 = (v) => (v << 1) | (v >> 6);
+const W2 = [0, 21, 43, 64];
+const interp2 = (l, h, w) => (l * (64 - W2[w]) + h * W2[w] + 32) >> 6;
+const mul8 = (a, b) => { const t = a * b + 128; return (t + (t >> 8)) >> 8; };
+const lerp8 = (a, b, s) => a + mul8(b - a, s);
+
+function evalWeights(px, weights, lr, lg, lb, hr, hg, hb) {
+  lr = from7(lr); lg = from7(lg); lb = from7(lb); hr = from7(hr); hg = from7(hg); hb = from7(hb);
+  // The ends' interpolation is the ends themselves: weight 0 and 64.
+  let ar = hr - lr, ag = hg - lg, ab = hb - lb;
+  const dot = (w) => interp2(lr, hr, w) * ar + interp2(lg, hg, w) * ag + interp2(lb, hb, w) * ab;
+  const d0 = lr * ar + lg * ag + lb * ab, d1 = dot(1), d2 = dot(2), d3 = hr * ar + hg * ag + hb * ab;
+  const t0 = d0 + d1, t1 = d1 + d2, t2 = d2 + d3;
+  ar *= 2; ag *= 2; ab *= 2;
+  for (let i = 0; i < 16; i++) {
+    const d = px[i * 3] * ar + px[i * 3 + 1] * ag + px[i * 3 + 2] * ab;
+    weights[i] = (d > t0 ? 1 : 0) + (d >= t1 ? 1 : 0) + (d >= t2 ? 1 : 0);
+  }
+}
+
+function packRGB(lr, lg, lb, hr, hg, hb, weights) {
+  let inv = 0;
+  if (weights[0] & 2) { [lr, hr] = [hr, lr]; [lg, hg] = [hg, lg]; [lb, hb] = [hb, lb]; inv = 3; }
+  BLK.fill(0);
+  setBits(32, 6, 0);
+  setColour(lr, lg, lb, hr, hg, hb);
+  setAlpha(255, 255);
+  let offset = 66;
+  for (let i = 0; i < 16; i++) { const n = i ? 2 : 1; setBits(inv ^ weights[i], n, offset); offset += n; }
+}
+
+const WEIGHT_VALS4 = [0x000009, 0x010204, 0x040201, 0x090000];
+function leastSquares(px, sel, totals) {
+  let accum = 0;
+  const uq = [0, 0, 0];
+  for (let i = 0; i < 16; i++) {
+    accum += WEIGHT_VALS4[sel[i]];
+    for (let c = 0; c < 3; c++) uq[c] += sel[i] * px[i * 3 + c];
+  }
+  const z00 = (accum >> 16) & 0xff, z10 = (accum >> 8) & 0xff, z11 = accum & 0xff, z01 = z10;
+  let det = f(f(z00 * z11) - f(z01 * z10));
+  if (Math.abs(det) < f(1e-8)) return null;
+  det = f(f(3 / 255) / det);
+  const iz00 = f(z11 * det), iz01 = f(-z01 * det), iz10 = f(-z10 * det), iz11 = f(z00 * det);
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const lo = [], hi = [];
+  for (let c = 0; c < 3; c++) {
+    const q10 = totals[c] * 3 - uq[c];
+    hi.push(toSeven(clamp01(f(f(iz00 * uq[c]) + f(iz01 * q10)))));
+    lo.push(toSeven(clamp01(f(f(iz10 * uq[c]) + f(iz11 * q10)))));
+  }
+  return [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]];
+}
+
+/** encode_bc7_mode_5_block, not in its high-quality mode: 16 RGB texels, px[i * 3 + c], into BLK. */
+const TOTALS = new Int32Array(3), MIN = new Int32Array(3), MAX = new Int32Array(3), WEIGHTS = new Uint8Array(16);
+function encodeMode5(px) {
+  midpoints();
+  const totals = TOTALS, min = MIN, max = MAX;
+  totals.fill(0); min.fill(255); max.fill(0);
+  for (let i = 0; i < 16; i++) {
+    for (let c = 0; c < 3; c++) {
+      const v = px[i * 3 + c];
+      totals[c] += v;
+      if (v < min[c]) min[c] = v;
+      if (v > max[c]) max[c] = v;
+    }
+  }
+  const weights = WEIGHTS;
+  if (min[0] === max[0] && min[1] === max[1] && min[2] === max[2]) {
+    const q = equals1();
+    weights.fill(1);
+    packRGB(q[min[0] * 2], q[min[1] * 2], q[min[2] * 2], q[min[0] * 2 + 1], q[min[1] * 2 + 1], q[min[2] * 2 + 1], weights);
+    return;
+  }
+  const meanR = (totals[0] + 8) >> 4, meanG = (totals[1] + 8) >> 4, meanB = (totals[2] + 8) >> 4;
+  const icov = [0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < 16; i++) {
+    const r = px[i * 3] - meanR, g = px[i * 3 + 1] - meanG, b = px[i * 3 + 2] - meanB;
+    icov[0] += r * r; icov[1] += r * g; icov[2] += r * b; icov[3] += g * g; icov[4] += g * b; icov[5] += b * b;
+  }
+  const maxVar = Math.max(icov[0], icov[3], icov[5]);
+  if (maxVar < 160) {
+    const lo = [0, 1, 2].map((c) => toSevenFrom8(lerp8(min[c], max[c], 16)));
+    const hi = [0, 1, 2].map((c) => toSevenFrom8(lerp8(min[c], max[c], 239)));
+    evalWeights(px, weights, lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+    packRGB(lo[0], lo[1], lo[2], hi[0], hi[1], hi[2], weights);
+    return;
+  }
+  const sc = f(1 / maxVar);
+  const wx = f(sc * icov[0]), wy = f(sc * icov[3]), wz = f(sc * icov[5]);
+  const altR = f(f(f(icov[0] * wx) + f(icov[1] * wy)) + f(icov[2] * wz));
+  const altG = f(f(f(icov[1] * wx) + f(icov[3] * wy)) + f(icov[4] * wz));
+  const altB = f(f(f(icov[2] * wx) + f(icov[4] * wy)) + f(icov[5] * wz));
+  let sr = 306, sg = 601, sb = 117;
+  const k = Math.max(Math.abs(altR), Math.abs(altG), Math.abs(altB));
+  if (k >= f(1e-10)) {
+    const m = f(2048 / k);
+    sr = Math.trunc(f(altR * m)); sg = Math.trunc(f(altG * m)); sb = Math.trunc(f(altB * m));
+  }
+  sr = (sr << 4) | 0; sg = (sg << 4) | 0; sb = (sb << 4) | 0;
+  let lowDot = 0x7fffffff, highDot = -0x80000000;
+  for (let i = 0; i < 16; i++) {
+    const d = (((px[i * 3] * sr + px[i * 3 + 1] * sg + px[i * 3 + 2] * sb) | 0) & ~0xf) + i;
+    if (d < lowDot) lowDot = d;
+    if (d > highDot) highDot = d;
+  }
+  const lc = lowDot & 15, hc = highDot & 15;
+  let e = [toSevenFrom8(px[lc * 3]), toSevenFrom8(px[lc * 3 + 1]), toSevenFrom8(px[lc * 3 + 2]),
+    toSevenFrom8(px[hc * 3]), toSevenFrom8(px[hc * 3 + 1]), toSevenFrom8(px[hc * 3 + 2])];
+  evalWeights(px, weights, ...e);
+  const better = leastSquares(px, weights, totals);
+  if (better) { e = better; evalWeights(px, weights, ...e); }
+  packRGB(...e, weights);
+}
+
+// ---- the chroma filter (chroma_filter_bc7_mode5), on by default in Basis
+
+/** Each endpoint's chroma, Co then Cg (exact: quarters of whole numbers), once a file. */
+function chromaOf(global) {
+  if (global.chroma) return global.chroma;
+  const colour = global.endpoints.colour, n = global.endpointCount, out = new Float64Array(n * 2);
+  for (let e = 0; e < n; e++) {
+    const r = expand5(colour[e * 3]), g = expand5(colour[e * 3 + 1]), b = expand5(colour[e * 3 + 2]);
+    out[e * 2] = r * 0.5 - b * 0.5;
+    out[e * 2 + 1] = -r * 0.25 + g * 0.5 - b * 0.25;
+  }
+  return (global.chroma = out);
+}
+
+function chromaFilter(global, endpointsOf, out, across, down) {
+  const chroma = chromaOf(global);
+  const at = (x, y) => endpointsOf[Math.min(down - 1, Math.max(0, y)) * across + Math.min(across - 1, Math.max(0, x))] * 2;
+  const lerp = (p, q, s) => p + (q - p) * s;
+  const px = new Uint8Array(48), yVals = new Float32Array(16);
+  for (let by = 0; by < down; by++) {
+    for (let bx = 0; bx < across; bx++) {
+      const centre = endpointsOf[by * across + bx] * 2, co = chroma[centre], cg = chroma[centre + 1];
+      let filter = false;
+      for (let dy = -1; dy <= 1 && !filter; dy++) {
+        const oy = by + dy;
+        if (oy < 0 || oy >= down) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const ox = bx + dx;
+          if ((dx | dy) === 0 || ox < 0 || ox >= across) continue;
+          const near = endpointsOf[oy * across + ox] * 2;
+          if (Math.abs(chroma[near] - co) > 10 || Math.abs(chroma[near + 1] - cg) > 10) { filter = true; break; }
+        }
+      }
+      if (!filter) continue;
+      const o = (by * across + bx) * 16;
+      loadBlock(out, o);
+      const lr = from7(getBits(7, 8)), hr = from7(getBits(7, 15)), lg = from7(getBits(7, 22));
+      const hg = from7(getBits(7, 29)), lb = from7(getBits(7, 36)), hb = from7(getBits(7, 43));
+      const y4 = [0, 1, 2, 3].map((i) => interp2(lr, hr, i) * 0.25 + interp2(lg, hg, i) * 0.5 + interp2(lb, hb, i) * 0.25);
+      let sum = 0, sumSq = 0, offset = 66;
+      for (let i = 0; i < 16; i++) {
+        const n = i ? 2 : 1, y = y4[getBits(n, offset)];
+        offset += n;
+        yVals[i] = y;
+        sum = f(sum + y);
+        sumSq = f(sumSq + f(y * y));
+      }
+      const S = 1 / 16, scaled = f(sum * S);
+      if (f(f(sumSq * S) - f(scaled * scaled)) < 3) continue;
+      for (let py = 0; py < 4; py++) {
+        const uby = by + ((py - 2) >> 2), fy = (((py + 2) & 3) + 0.5) * 0.25;
+        for (let pxi = 0; pxi < 4; pxi++) {
+          const ubx = bx + ((pxi - 2) >> 2), fx = (((pxi + 2) & 3) + 0.5) * 0.25;
+          const a = at(ubx, uby), b = at(ubx + 1, uby), c = at(ubx, uby + 1), d = at(ubx + 1, uby + 1);
+          const fco = lerp(lerp(chroma[a], chroma[b], fx), lerp(chroma[c], chroma[d], fx), fy);
+          const fcg = lerp(lerp(chroma[a + 1], chroma[b + 1], fx), lerp(chroma[c + 1], chroma[d + 1], fx), fy);
+          const y = yVals[py * 4 + pxi], t = (py * 4 + pxi) * 3;
+          const clamp = (v) => Math.trunc(0.5 + (v < 0 ? 0 : v > 255 ? 255 : v));
+          px[t] = clamp(y + fco - fcg); px[t + 1] = clamp(y + fcg); px[t + 2] = clamp(y - fco - fcg);
+        }
+      }
+      encodeMode5(px);
+      storeBlock(out, o);
+    }
+  }
+}
+
+/**
+ * A level's decoded slices as BC7 (mode 5) blocks, as Basis Universal's
+ * transcoder writes them. `filter` false leaves out the chroma filter, as
+ * Basis's cDecodeFlagsNoETC1SChromaFiltering does.
+ */
+export function etc1sToBC7(global, slice, alpha, width, height, { filter = true } = {}) {
+  const across = Math.ceil(width / 4), down = Math.ceil(height / 4);
+  const flags = selectorFlags(global);
+  const out = new Uint8Array(across * down * 16);
+  for (let b = 0; b < across * down; b++) {
+    bc7Colour(global, flags, slice.endpoints[b], slice.selectors[b]);
+    storeBlock(out, b * 16);
+  }
+  if (filter) chromaFilter(global, slice.endpoints, out, across, down);
+  if (alpha) {
+    for (let b = 0; b < across * down; b++) {
+      loadBlock(out, b * 16);
+      bc7Alpha(global, flags, alpha.endpoints[b], alpha.selectors[b]);
+      storeBlock(out, b * 16);
+    }
+  }
+  return out;
+}

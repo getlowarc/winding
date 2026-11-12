@@ -8,6 +8,7 @@
 
 import assert from 'node:assert/strict';
 import { readKTX2, transcodeKTX2 } from '../src/scene/ktx2.js';
+import { readGlobalData, decodeSlice, etc1sToBC7 } from '../src/scene/etc1s.js';
 import { loadBasis, encodeETC1S, transcodeReference } from './fixtures/basis.mjs';
 
 let passed = 0;
@@ -46,8 +47,8 @@ test("every level decodes to the RGBA Basis's own transcoder gives, at coarse to
     for (const quality of [1, 64, 255]) {
       const file = encodeETC1S(B, rgba, w, h, { quality });
       files++;
-      const image = transcodeKTX2(file, 'bc7');
-      assert.equal(image.target, 'rgba', 'ETC1S comes as RGBA8 for now');
+      const image = transcodeKTX2(file, 'rgba');
+      assert.equal(image.target, 'rgba');
       image.levels.forEach((level, l) => {
         const theirs = transcodeReference(B, file, l, 'cTFRGBA32');
         assert.equal(level.data.length, theirs.length, `${name}, quality ${quality}, level ${l}: size`);
@@ -59,6 +60,35 @@ test("every level decodes to the RGBA Basis's own transcoder gives, at coarse to
     }
   }
   console.log(`      ${files} files, ${levels} levels, all the same`);
+});
+
+test("every level becomes the BC7 blocks Basis's own transcoder writes, chroma filter and alpha included", () => {
+  let blocks = 0, filtered = 0;
+  for (const { name, w, h, rgba } of IMAGES) {
+    for (const quality of [1, 64, 255]) {
+      const file = encodeETC1S(B, rgba, w, h, { quality });
+      const image = transcodeKTX2(file, 'bc7');
+      // One level, or a size of part blocks, stays RGBA8 (the test above checks it).
+      if (image.target !== 'bc7') continue;
+      const t = readKTX2(file), global = readGlobalData(t.globalData, t.levels.length);
+      image.levels.forEach((level, l) => {
+        const theirs = transcodeReference(B, file, l, 'cTFBC7_RGBA');
+        assert.equal(level.data.length, theirs.length, `${name}, quality ${quality}, level ${l}: size`);
+        // How many blocks the chroma filter changed, so a pass is known to have reached it.
+        const { rgb } = global.images[l], across = Math.ceil(level.width / 4), down = Math.ceil(level.height / 4);
+        const unfiltered = etc1sToBC7(global, decodeSlice(global, t.levels[l].data, rgb[0], rgb[0] + rgb[1], across, down), null, level.width, level.height, { filter: false });
+        for (let b = 0; b < theirs.length; b += 16) {
+          blocks++;
+          for (let i = 0; i < 16; i++) {
+            if (level.data[b + i] !== theirs[b + i]) assert.fail(`${name}, quality ${quality}, level ${l}, block ${b / 16}: ours ${Array.from(level.data.subarray(b, b + 16))}, Basis ${Array.from(theirs.subarray(b, b + 16))}`);
+          }
+          for (let i = 0; i < 16; i++) if (unfiltered[b + i] !== theirs[b + i]) { filtered++; break; }
+        }
+      });
+    }
+  }
+  assert.ok(filtered > 0, 'the chroma filter changed no block');
+  console.log(`      ${blocks} blocks, all the same; ${filtered} of them the chroma filter's`);
 });
 
 test('an ETC1S file is read as BasisLZ with its global data, and one level comes as that level', () => {

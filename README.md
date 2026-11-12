@@ -439,9 +439,9 @@ These are real and currently unaddressed.
   Anything not coincident renders identically every frame. A fixed order would need a prefix-sum
   compaction — more passes, every frame, for every scene — to hold still an artifact that is a
   content error either way.
-- **KTX2 textures in ETC1S still take 4 bytes a texel.** Both Basis modes are read
-  (`KHR_texture_basisu`): UASTC is transcoded to ASTC or BC7 at a byte a texel, but ETC1S, the
-  smaller files, is decoded to RGBA8 for now, as PNG, JPEG and WebP are. Draco geometry is refused:
+- **KTX2 textures in ETC1S take 4 bytes a texel on ASTC devices.** Both Basis modes are read
+  (`KHR_texture_basisu`) and become ASTC or BC7 at a byte a texel, except ETC1S where there is no
+  BC7 (Apple and mobile GPUs): there it is RGBA8 for now, as PNG, JPEG and WebP are. Draco geometry is refused:
   meshopt does the same job and is read, and `gltf-transform meshopt` converts one to the other.
 - **A 3D camera doesn't draw tilemaps, shapes or paths, and a HUD doesn't draw
   particles.** The particle system follows one scene's emitters at a time.
