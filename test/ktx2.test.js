@@ -134,6 +134,16 @@ test('transcoding a file gives each level in the format asked, as the block tran
   }
 });
 
+test('for the GPU, a file bound for ASTC or BC7 comes back as its UASTC levels, only unpacked', () => {
+  const levels = solidLevels(16, 8, 5);
+  const image = transcodeKTX2(ktx2({ width: 16, height: 8, levels, scheme: KTX2_ZSTD }), 'bc7', { gpu: true });
+  assert.deepEqual([image.target, image.uastc], ['bc7', true]);
+  assert.deepEqual(image.levels.map((l) => l.data), levels);
+  // One level still comes as RGBA8, transcoded here.
+  const one = transcodeKTX2(ktx2({ width: 8, height: 8, levels: solidLevels(8, 8, 1) }), 'astc', { gpu: true });
+  assert.deepEqual([one.target, one.uastc], ['rgba', undefined]);
+});
+
 test('one level, or a size that is not whole blocks, comes as RGBA8, for mips the GPU can make', () => {
   const one = transcodeKTX2(ktx2({ width: 8, height: 8, levels: solidLevels(8, 8, 1) }), 'bc7');
   assert.equal(one.target, 'rgba');

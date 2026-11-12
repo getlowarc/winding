@@ -702,3 +702,60 @@ function astcBlock(block) {
 export function uastcToASTC(data, width, height) {
   return transcodeLevel(data, width, height, encodeASTC);
 }
+
+// ---- for the GPU ----------------------------------------------------------
+
+/**
+ * Every table the transcoding to BC7 and ASTC reads, in one Uint32Array for a
+ * compute shader (render/uastcGPU.js), so the GPU works from exactly these:
+ * { words, at }, `at` naming where each table starts. A pattern is one word,
+ * two bits a texel; a BC7 plan is four (see the shader); float tables are
+ * their bits.
+ */
+export function packedTables() {
+  solidTables();
+  iseTables();
+  const parts = [], at = {};
+  let n = 0;
+  const add = (name, values) => { at[name] = n; parts.push(values); n += values.length; };
+  const pack2 = (rows) => rows.map((row) => row.reduce((w, s, t) => w | (s << (2 * t)), 0) >>> 0);
+  add('huff', HUFF_MODES);
+  for (const [name, table] of Object.entries({ START, WEIGHT_BITS, ENDPOINT_RANGE, SUBSETS, PLANES, COMPS, PATTERN_BITS, HAS_SELECTOR })) add(name, table);
+  add('RANGE_BITS', RANGE_BITS); add('RANGE_TRITS', RANGE_TRITS); add('RANGE_QUINTS', RANGE_QUINTS);
+  const dequantAt = new Array(21).fill(0);
+  add('DEQUANT_AT', dequantAt);
+  for (const range of Object.keys(DEQUANT)) { dequantAt[range] = n; add(`dequant${range}`, DEQUANT[range]); }
+  add('TRIT_DIGITS', TRIT_DIGITS); add('QUINT_DIGITS', QUINT_DIGITS);
+  add('TRIT_GROUP_BITS', TRIT_GROUP_BITS); add('QUINT_GROUP_BITS', QUINT_GROUP_BITS);
+  add('PATTERNS2', pack2(PATTERNS2)); add('PATTERNS3', pack2(PATTERNS3)); add('PATTERNS7', pack2(PATTERNS7));
+  add('ANCHOR_MASK2', ANCHOR_MASK2); add('ANCHOR_MASK3', ANCHOR_MASK3); add('ANCHOR_MASK7', ANCHOR_MASK7);
+  // BC7: plans in the order planOf picks them (one subset, mode 1, then the three pattern tables).
+  const plans = [PLAN_ONE, PLAN_MODE1, ...PLANS2, ...PLANS3, ...PLANS7].flatMap((p) => [
+    p.pattern | (p.subsets << 8) | (p.from[0] << 16) | ((p.from[1] ?? 0) << 20) | ((p.from[2] ?? 0) << 24),
+    pack2([Array.from(p.map)])[0],
+    p.anchors[0] | ((p.anchors[1] ?? 0) << 8) | ((p.anchors[2] ?? 0) << 16),
+    p.mask,
+  ]);
+  add('PLANS', plans);
+  add('BC7_MODE', BC7_MODE); add('BC7_BITS', BC7_BITS);
+  const convAt = BC7_CONV.map(() => 0xffffffff);
+  add('CONV_AT', convAt);
+  BC7_CONV.forEach((table, mode) => { if (table) { convAt[mode] = n; add(`conv${mode}`, table); } });
+  add('CONV12', TO_BC7_WEIGHTS['1>2']);
+  const bitsOf = (floats) => new Uint32Array(Float32Array.from(floats).buffer);
+  for (const bits of [5, 6, 7]) {
+    const { q, unique, shared } = pbitTables(bits);
+    add(`Q${bits}`, q); add(`UNIQUE${bits}`, bitsOf(unique)); add(`SHARED${bits}`, bitsOf(shared));
+  }
+  add('SOLID6', [...SOLID6[0], ...SOLID6[1]].map((e) => e.lo | (e.hi << 8) | (e.error << 16)));
+  add('SOLID5', SOLID5.map((e) => e.lo | (e.hi << 8)));
+  // ASTC.
+  add('SEEDS2', SEEDS2); add('SEEDS3', SEEDS3); add('SEEDS7', SEEDS7);
+  add('BLOCK_MODE', BLOCK_MODE); add('CEM', CEM);
+  add('TRIT_CODES', TRIT_CODES); add('QUINT_CODES', QUINT_CODES);
+  add('TRIT_SPLIT', TRIT_SPLIT); add('QUINT_SPLIT', QUINT_SPLIT);
+  const words = new Uint32Array(n);
+  let o = 0;
+  for (const part of parts) { words.set(Array.from(part, (v) => v >>> 0), o); o += part.length; }
+  return { words, at };
+}

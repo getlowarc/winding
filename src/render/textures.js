@@ -11,6 +11,7 @@ import {
 import {
   materialTextureSlots, samplerDescriptor, textureImageIndex, textureSamplerIndex, imageColorSpaces,
 } from '../scene/gltf/images.js';
+import { UastcGPU } from './uastcGPU.js';
 
 /** WebGPU's formats for transcodeKTX2's targets, sRGB by appending '-srgb'. */
 const KTX2_FORMATS = { astc: 'astc-4x4-unorm', bc7: 'bc7-rgba-unorm', rgba: 'rgba8unorm' };
@@ -21,15 +22,18 @@ const KTX2_FORMATS = { astc: 'astc-4x4-unorm', bc7: 'bc7-rgba-unorm', rgba: 'rgb
  * is still one: the copy is the level's size in whole blocks. Both kinds come
  * to 4 bytes a texel of that size a row.
  */
-function uploadLevels(rhi, image, srgb, label) {
-  const block = image.target !== 'rgba';
-  const texture = createTexture(rhi, {
+function levelsTexture(rhi, image, srgb, label) {
+  return createTexture(rhi, {
     label,
     size: [image.width, image.height],
     format: KTX2_FORMATS[image.target] + (srgb ? '-srgb' : ''),
     mipLevelCount: image.levels.length,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
   });
+}
+function uploadLevels(rhi, image, srgb, label) {
+  const block = image.target !== 'rgba';
+  const texture = levelsTexture(rhi, image, srgb, label);
   image.levels.forEach(({ width, height, data }, mipLevel) => {
     if (block) { width = Math.ceil(width / 4) * 4; height = Math.ceil(height / 4) * 4; }
     rhi.queue.writeTexture({ texture, mipLevel }, data, { bytesPerRow: width * 4 }, [width, height]);
@@ -54,6 +58,10 @@ export class GLTFTextures {
     this._textures = new Map();
     this._samplers = new Map();
     this.uploaded = 0;
+    /** KTX2 images transcoding on the GPU, until their levels are copied in. */
+    this._pending = [];
+    /** Their transcoded blocks on the GPU, freed with the images or with this. */
+    this._transcodes = [];
     /** Images whose alpha is coverage, which their mips average by (see imageColorSpaces). */
     this._coverage = new Set([...imageColorSpaces(json)].filter(([, spaces]) => spaces.coverage).map(([image]) => image));
   }
@@ -98,7 +106,16 @@ export class GLTFTextures {
     if (texture) return texture;
 
     const label = `gltf-image-${imageIndex}${srgb ? '-srgb' : ''}`;
-    if (bitmap.levels?.length > 1) {
+    if (bitmap.uastc) {
+      // Transcoded once on the GPU, however many textures (sRGB, linear) take it.
+      texture = levelsTexture(this.rhi, bitmap, srgb, label);
+      if (!bitmap.transcoded) {
+        bitmap.transcoded = UastcGPU.for(this.rhi).transcode(bitmap, bitmap.target);
+        this._transcodes.push(bitmap.transcoded);
+      }
+      const made = texture;
+      this._pending.push(bitmap.transcoded.then((gpu) => { if (!this._destroyed) gpu.copy(made); }));
+    } else if (bitmap.levels?.length > 1) {
       texture = uploadLevels(this.rhi, bitmap, srgb, label);
     } else {
       texture = createTexture2D(this.rhi, { label, width: bitmap.width, height: bitmap.height, srgb, mipmapped: true });
@@ -146,12 +163,26 @@ export class GLTFTextures {
    * only releases the ImageBitmaps, whose native memory the collector would
    * otherwise free whenever it felt like it.
    */
+  /** Once every KTX2 image transcoding on the GPU has its copies on the queue. */
+  async ready() {
+    await Promise.all(this._pending);
+  }
+
   releaseBitmaps() {
     for (const bitmap of this.bitmaps) bitmap?.close?.();
+    this._freeTranscodes();
     this.bitmaps = [];
   }
 
+  /** The GPU's transcoded blocks, once copied in: the copies keep them until they run. */
+  _freeTranscodes() {
+    for (const transcode of this._transcodes) transcode.then((gpu) => gpu.destroy(), () => {});
+    this._transcodes = [];
+  }
+
   destroy() {
+    this._destroyed = true;
+    this._freeTranscodes();
     for (const texture of this._textures.values()) texture.destroy();
     this._textures.clear();
   }

@@ -14,13 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   times a pixel to keep its texture sharp; on a weaker GPU that is a real share of the frame --
   textured Sponza at 1280x720 on Iris Xe draws about 13% faster at 1 than at 16 -- and now a game can
   choose. Fixed at creation.
-- **KTX2 textures (`KHR_texture_basisu`), in Basis UASTC.** `engine.load` reads them and transcodes
-  each, on workers, to what the GPU samples: ASTC 4x4 where the device has it, losing nothing, else
-  BC7, else RGBA8. A block-compressed texture is a quarter of the memory, uses the mips the file
-  carries instead of making them, and is cheaper to sample. The container, its zstd
-  supercompression and the transcoder are Winding's own, no dependency, and every block is the one
-  Basis Universal's transcoder writes, ASTC, BC7 and RGBA alike. A file's PNG fallback is no longer
-  fetched. ETC1S (BasisLZ) files are not read yet.
+- **KTX2 textures (`KHR_texture_basisu`), in Basis UASTC.** `engine.load` reads them and makes each
+  what the GPU samples: ASTC 4x4 where the device has it, losing nothing, else BC7, else RGBA8.
+  Workers undo the file's zstd and a compute shader transcodes, so the load costs little more than
+  PNG's: Sponza's 69 images at 1280x720 on Iris Xe load in 0.59 s as KTX2 and 0.45 s as shipped,
+  in a quarter of the texture memory (95 MB, not 380), with the mips the file carries instead of
+  made ones. The container, its zstd and the transcoder are Winding's own, no dependency, and every
+  block is the one Basis Universal's transcoder writes, on the CPU and the GPU alike. A file's PNG
+  fallback is no longer fetched. ETC1S (BasisLZ) files are not read yet.
 
 ### Changed
 

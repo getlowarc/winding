@@ -4,10 +4,11 @@
 
 import { transcodeKTX2 } from '../ktx2.js';
 
-self.addEventListener('message', ({ data: { bytes, target } }) => {
+self.addEventListener('message', ({ data: { bytes, target, gpu } }) => {
   try {
-    const image = transcodeKTX2(bytes, target);
-    self.postMessage(image, image.levels.map((level) => level.data.buffer));
+    const image = transcodeKTX2(bytes, target, { gpu });
+    // Levels left as UASTC with no zstd to undo share the file's one buffer: listed once.
+    self.postMessage(image, [...new Set(image.levels.map((level) => level.data.buffer))]);
   } catch (error) {
     self.postMessage({ error: error.message });
   }

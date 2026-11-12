@@ -97,20 +97,23 @@ export function readKTX2(bytes) {
 
 /**
  * A Basis UASTC KTX2 file's levels for the GPU: `target` 'astc' (ASTC 4x4,
- * nothing lost), 'bc7', or 'rgba' (RGBA8). Returns { width, height, target,
+ * nothing lost), 'bc7', or 'rgba' (RGBA8). With `gpu`, a file that would
+ * become ASTC or BC7 is left as UASTC (`uastc: true`) for the GPU to
+ * transcode (render/uastcGPU.js); only its zstd is undone here. Returns { width, height, target,
  * levels: [{ width, height, data }] }, `target` being what was written:
  * RGBA8 instead of a block format when the file has a single level, since a
  * block-compressed texture's mips cannot be rendered on the GPU (RGBA8 can),
  * or when its size is not whole 4x4 blocks, which WebGPU asks of one.
  * Every level the file has comes back; with one, the caller makes the mips.
  */
-export function transcodeKTX2(bytes, target) {
+export function transcodeKTX2(bytes, target, { gpu = false } = {}) {
   const file = readKTX2(bytes);
   if (file.basis === 'etc1s') fail('ETC1S (BasisLZ) is not read yet, only UASTC');
   if (file.basis !== 'uastc') fail('not Basis Universal: KHR_texture_basisu holds UASTC or ETC1S');
   if (file.depth > 1 || file.layers > 1 || file.faces !== 1) fail('not a 2D image (a volume, an array or a cube)');
   const { width, height, levels } = file;
   if (levels.length === 1 || width % 4 || height % 4) target = 'rgba';
+  if (gpu && target !== 'rgba') return { width, height, target, uastc: true, levels };
   const transcode = target === 'astc' ? uastcToASTC : target === 'bc7' ? uastcToBC7 : uastcToRGBA;
   return { width, height, target, levels: levels.map((l) => ({ width: l.width, height: l.height, data: transcode(l.data, l.width, l.height) })) };
 }

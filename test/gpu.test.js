@@ -13,6 +13,8 @@
 // full frame records and submits without the device complaining.
 
 import { EXTENSION_TEXTURES } from '../src/scene/gltf/images.js';
+import { unpackBlock, encodeBC7, encodeASTC } from '../src/scene/uastc.js';
+import { UastcGPU } from '../src/render/uastcGPU.js';
 import { Winding, Camera, Camera2D } from '../src/winding.js';
 import { Benchmark } from '../src/bench.js';
 import { Environment } from '../src/render/ibl.js';
@@ -1115,6 +1117,68 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     }
 
     return `${results.length} features drawn and read back`;
+  });
+
+  await step('UASTC transcoded on the GPU is the JavaScript transcoder, block for block, in every mode', async () => {
+    // Random blocks of every mode -- their fields are only bits, so any bytes
+    // with a mode's code and a pattern in its table are a block -- spread over
+    // levels of different sizes, so each level's padded rows are checked too.
+    let seed = 7;
+    const random = () => (seed = (seed * 16807) % 2147483647) & 255;
+    const PATTERNS = { 2: 30, 3: 11, 4: 30, 7: 19, 9: 30, 16: 30 };
+    const perMode = new Map();
+    const block = unpackBlock(new Uint8Array(16), 0);
+    while ([...perMode.values()].reduce((n, list) => n + list.length, 0) < 19 * 400 && seed !== 0) {
+      const bytes = Uint8Array.from({ length: 16 }, random);
+      let mode;
+      try { mode = unpackBlock(bytes, 0, block).mode; } catch { continue; }
+      if (PATTERNS[mode] !== undefined && block.pattern >= PATTERNS[mode]) continue;
+      const list = perMode.get(mode) ?? [];
+      if (list.length < 400) { list.push(bytes); perMode.set(mode, list); }
+    }
+    const modes = [...perMode.keys()].sort((a, b) => a - b);
+    if (modes.length !== 19) throw new Error(`random blocks reached modes ${modes} only`);
+    const all = modes.flatMap((m) => perMode.get(m));
+    // Levels of 32x8, 20x12, 4x4 texels, then the rest in one row.
+    const shapes = [[8, 2], [5, 3], [1, 1]];
+    const used = shapes.reduce((n, [w, h]) => n + w * h, 0);
+    shapes.push([all.length - used, 1]);
+    let next = 0;
+    const levels = shapes.map(([across, down]) => {
+      const data = new Uint8Array(across * down * 16);
+      for (let i = 0; i < across * down; i++) data.set(all[next++], i * 16);
+      return { width: across * 4, height: down * 4, data };
+    });
+    const gpu = UastcGPU.for(engine.gpu);
+    const device = engine.gpu.device;
+    let checked = 0;
+    for (const [target, encode] of [['bc7', encodeBC7], ['astc', encodeASTC]]) {
+      const made = await gpu.transcode({ levels }, target);
+      const read = device.createBuffer({ size: made.buffer.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      const encoder = device.createCommandEncoder();
+      encoder.copyBufferToBuffer(made.buffer, 0, read, 0, made.buffer.size);
+      device.queue.submit([encoder.finish()]);
+      await read.mapAsync(GPUMapMode.READ);
+      const out = new Uint8Array(read.getMappedRange().slice(0));
+      read.destroy();
+      made.destroy();
+      const expected = new Uint8Array(16);
+      levels.forEach((level, l) => {
+        const { offset, bytesPerRow } = made.levels[l];
+        const across = level.width / 4;
+        for (let b = 0; b < level.data.length / 16; b++) {
+          encode(unpackBlock(level.data, b * 16, block), expected, 0);
+          const at = offset + Math.floor(b / across) * bytesPerRow + (b % across) * 16;
+          for (let i = 0; i < 16; i++) {
+            if (out[at + i] !== expected[i]) {
+              throw new Error(`${target}, level ${l}, block ${b} (mode ${block.mode}): GPU ${Array.from(out.subarray(at, at + 16))}, JavaScript ${Array.from(expected)}`);
+            }
+          }
+          checked++;
+        }
+      });
+    }
+    return `${checked} blocks, ${all.length} in each of BC7 and ASTC, every mode, over ${levels.length} levels`;
   });
 
   await step('a KTX2 texture loads in the block format the GPU has, every level, and draws as its PNG does', async () => {

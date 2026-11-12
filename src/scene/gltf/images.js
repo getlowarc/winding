@@ -34,7 +34,7 @@ const BITMAP_OPTIONS = { colorSpaceConversion: 'none', premultiplyAlpha: 'none' 
  */
 export async function decodeImages(json, buffers, {
   baseURL, fetchImpl = globalThis.fetch, maxDimension = Infinity, onImage = null,
-  ktx2Target = 'rgba', createTranscoder = null, transcoders = 1,
+  ktx2Target = 'rgba', ktx2OnGPU = false, createTranscoder = null, transcoders = 1,
 } = {}) {
   const images = json.images ?? [];
   const used = usedImages(json);
@@ -42,7 +42,7 @@ export async function decodeImages(json, buffers, {
   let pool = null;
   const transcode = (bytes) => {
     pool ??= createTranscoder ? transcoderPool(createTranscoder, transcoders) : inlineTranscoder();
-    return pool.run(bytes, ktx2Target);
+    return pool.run(bytes, ktx2Target, ktx2OnGPU);
   };
 
   return Promise.all(images.map(async (image, index) => {
@@ -62,7 +62,7 @@ export async function decodeImages(json, buffers, {
       if (size.width > maxDimension || size.height > maxDimension) {
         throw new Error(`is ${size.width}x${size.height}, past this device's ${maxDimension}`);
       }
-      // A KTX2 image: { width, height, target, levels } from transcodeKTX2.
+      // A KTX2 image: { width, height, target, uastc, levels } from transcodeKTX2.
       const decoded = size.ktx2 ? await transcode(bytes) : await createImageBitmap(blob, BITMAP_OPTIONS);
       // As each lands, so an uploader can start on it while the rest decode.
       onImage?.(index, decoded);
@@ -97,11 +97,11 @@ function transcoderPool(createWorker, size) {
       workers.splice(workers.indexOf(worker), 1);
       if (queue.length) { const fresh = createWorker(); workers.push(fresh); next(fresh); }
     };
-    worker.postMessage({ bytes: job.bytes, target: job.target }, [job.bytes.buffer]);
+    worker.postMessage({ bytes: job.bytes, target: job.target, gpu: job.gpu }, [job.bytes.buffer]);
   };
   return {
-    run: (bytes, target) => new Promise((resolve, reject) => {
-      queue.push({ bytes, target, resolve, reject });
+    run: (bytes, target, gpu) => new Promise((resolve, reject) => {
+      queue.push({ bytes, target, gpu, resolve, reject });
       let worker = idle.pop();
       if (!worker && workers.length < size) workers.push(worker = createWorker());
       if (worker) next(worker);
@@ -113,7 +113,7 @@ function transcoderPool(createWorker, size) {
 /** The same transcoding on this thread, where there are no workers: Node, and tests. */
 function inlineTranscoder() {
   const module = import('../ktx2.js');
-  return { run: async (bytes, target) => (await module).transcodeKTX2(bytes, target), close() {} };
+  return { run: async (bytes, target, gpu) => (await module).transcodeKTX2(bytes, target, { gpu }), close() {} };
 }
 
 async function imageBlob(image, json, buffers, { baseURL, fetchImpl, index }) {

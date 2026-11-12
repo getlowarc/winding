@@ -556,6 +556,8 @@ export class Winding {
             // ASTC first, since UASTC goes to it with nothing lost, then BC7.
             ktx2Target: this.gpu.features.has('texture-compression-astc') ? 'astc'
               : this.gpu.features.has('texture-compression-bc') ? 'bc7' : 'rgba',
+            // ASTC and BC7 made on the GPU (render/uastcGPU.js): the workers only undo zstd.
+            ktx2OnGPU: true,
             createTranscoder: () => createModuleWorker(new URL('../scene/gltf/ktx2Worker.js', import.meta.url)),
             // A core each but this thread's: unlike the job system's, these
             // wait on messages, never spin, so its cap of 7 does not apply.
@@ -581,6 +583,9 @@ export class Winding {
     }
     // Built as the images landed; given them too, for anything not made yet.
     textures.bitmaps = bitmaps;
+    // KTX2 images transcoding on the GPU: on the queue before the model is.
+    await textures.ready();
+    this._assertAlive('load');
     if (into !== null) return this._refill(into, model, textures);
 
     // Filled in as it is built, so a throw part way through -- a texture past
