@@ -329,6 +329,11 @@ export function etc1sToRGBA(global, slice, alpha, width, height) {
 
 // ---- to BC7 (mode 5), as Basis Universal's transcoder writes it --------
 //
+// This section is under the Apache License 2.0, not Winding's MIT: it is
+// changed from Basis Universal, Copyright (C) 2019-2026 Binomial LLC, ported
+// to JavaScript with its tables computed instead of carried. See
+// THIRD_PARTY_NOTICES.md for the license and Basis Universal's NOTICE.
+//
 // Ported from basisu_transcoder.cpp (Apache-2.0, Binomial LLC): its ETC1S to
 // BC7 mode 5 conversion (convert_etc1s_to_bc7_m5_color and _alpha), its
 // default chroma filter (chroma_filter_bc7_mode5) and the real-time mode 5

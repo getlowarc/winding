@@ -41,7 +41,8 @@
   "sideEffects": false,
   "files": [
     "src",
-    "docs/API.md"
+    "docs/API.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "engines": {
     "node": ">=20"

@@ -471,4 +471,5 @@ includes; questions go to [Discussions](https://github.com/getlowarc/winding/dis
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). One part is Apache-2.0: the ETC1S-to-BC7 transcoding, ported from
+Basis Universal; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has its license and notices.
