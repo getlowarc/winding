@@ -39,6 +39,9 @@ const IMAGES = [
   make('cut-out alpha', 64, 64, (x, y) => [(x * 5) & 255, (y * 5) & 255, 90, ((x >> 3) + (y >> 3)) % 2 ? 255 : 0]),
   make('an odd size', 37, 21, (x, y) => [x * 6, y * 11, (x * y) & 255, 200 + (x & 31)]),
   make('one texel', 1, 1, () => [200, 100, 50, 255]),
+  // Black, white and grey speckle: blocks on intensity table 7 with all four selectors,
+  // the case whose ASTC errors Basis's table carries rather than its generator.
+  make('harsh speckle', 128, 128, () => { const r = random(), v = r < 0.33 ? 0 : r < 0.66 ? 255 : 128 + (random() - 0.5) * 60; return [v, v * 0.9 + 20, v * 0.8, 255]; }),
 ];
 
 test("every level decodes to the RGBA Basis's own transcoder gives, at coarse to fine quality", () => {

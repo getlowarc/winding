@@ -10,7 +10,9 @@ encoder, ASTC's block packing, and the searches that build their conversion tabl
 from Basis Universal's `transcoder/basisu_transcoder.cpp`
 (commit 073eb6a0a34a23d77e75e54f41dcd9653a52da83), Copyright (C) 2019-2026 Binomial LLC, under the
 Apache License 2.0. It was changed in the porting: rewritten in JavaScript, and its tables computed
-when first used instead of carried. Those sections are under the Apache License 2.0, below.
+when first used instead of carried -- except 320 error values of the ETC1S-to-ASTC table (intensity
+table 7, all selectors), copied from `basisu_transcoder_tables_astc.inc` because Basis's generator
+does not reproduce them. Those sections are under the Apache License 2.0, below.
 
 The rest of the KTX2 support -- the KTX2 reader, zstd, ETC1S decoding, and UASTC to RGBA, BC7 and
 ASTC on the CPU and GPU -- is written from the public-domain specifications of those formats.
