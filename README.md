@@ -108,24 +108,21 @@ takes, what it returns and what it throws, with an index to look any of them up 
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/compare-dark.svg">
-  <img src="docs/images/compare-light.svg" width="760" alt="Frame time in milliseconds, lower is better. Desktop, RTX 5060 Ti: Sponza with sun shadows: Winding 0.63, Three.js 0.49, Babylon.js 2.1, PlayCanvas 0.95. 10,000 moving cubes: Winding 3.7, Three.js 53, Babylon.js 23, PlayCanvas 33. 256 point lights: Winding 0.69, Three.js 0.75, Babylon.js 1.3, PlayCanvas 0.89. Laptop, Intel Iris Xe: Sponza: Winding 4.2, Three.js 2.6, Babylon.js 6.0, PlayCanvas 4.0. Cubes: Winding 2.6, Three.js 49, Babylon.js 9.9, PlayCanvas 19. Lights: Winding 6.6, Three.js 6.7, Babylon.js 23, PlayCanvas 9.7.">
+  <img src="docs/images/compare-light.svg" width="760" alt="Frame time in milliseconds, lower is better, on a laptop with Intel Iris Xe. Sponza with sun shadows: Winding 3.1, Three.js 3.5, Babylon.js 6.5, PlayCanvas 4.4. 10,000 moving cubes: Winding 2.4, Three.js 49, Babylon.js 10, PlayCanvas 19. 256 point lights: Winding 5.6, Three.js 7.3, Babylon.js 24, PlayCanvas 10.">
 </picture>
 
-The same three scenes through each engine's WebGPU renderer, in one page, taking turns, on a desktop
-and a laptop. Winding is the fastest by far with many moving objects, and with many lights the
-fastest on the desktop and level with Three.js on the laptop. With shadows Three.js is ahead on
-both.
+The same three scenes through each engine's WebGPU renderer, in one page, taking turns, on a laptop.
+Winding is the fastest in all three: twenty times faster than Three.js with many moving objects, and
+ahead of all three with many lights and in a textured room under a shadowed sun.
 
-<sub>Desktop: NVIDIA GeForce RTX 5060 Ti, AMD Ryzen 5 5500, Edge 154. Laptop: Intel Iris Xe,
-Chrome 154. Both at 1280×720. Each number is the median of eight alternating blocks of 30 frames,
-timed to the GPU finishing, averaged over two runs; Three.js r186, Babylon.js 9.29, PlayCanvas 2.23.
-Matched: four 1024×1024 shadow cascades to 40 m, ACES tone mapping, and no antialiasing, bloom,
-ambient occlusion or TAA. Not matched: Winding lights its ambient from an environment map where the
-others use a flat term, and it culls by occlusion as well as by view. Winding draws with WebGPU
-only; the other three can also draw with WebGL. The chart shows a comparison at a time, turning every
-seven seconds, and holds still for anyone who asked for less motion; every number is in its
-description. To rerun it, open <code>bench/compare.html</code> as a file in Chrome or Edge: it runs
-every scene twice and shows the results.</sub>
+<sub>Laptop: Intel Iris Xe, Chrome 157, at 1280×720. Each number is the median of eight alternating
+blocks of 30 frames, timed to the GPU finishing, averaged over two runs; Three.js r186, Babylon.js
+9.29, PlayCanvas 2.23. Matched: four 1024×1024 shadow cascades to 40 m, ACES tone mapping, 16×
+anisotropic texture filtering, and no antialiasing, bloom, ambient occlusion or TAA. Not matched:
+Winding lights its ambient from an environment map where the others use a flat term, and it culls by
+occlusion as well as by view. Winding draws with WebGPU only; the other three can also draw with
+WebGL. Every number is in the chart's description. To rerun it, open <code>bench/compare.html</code>
+as a file in Chrome or Edge: it runs every scene twice and shows the results.</sub>
 
 **The code, side by side.** [Hello world, side by side](docs/SIDE-BY-SIDE.md) has the same small
 program written in all four engines: a model, a sun with shadows and an orbit camera. It also lists

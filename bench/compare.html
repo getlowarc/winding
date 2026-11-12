@@ -80,7 +80,7 @@ const PLAN = ['sponza', 'cubes', 'lights', 'sponza', 'cubes', 'lights'];
 const NAMES = { sponza: 'Sponza, sun shadows', cubes: '10,000 moving cubes', lights: '256 point lights' };
 const ENGINES = ['Winding', 'Three.js', 'Babylon.js', 'PlayCanvas'];
 // What the README chart shows, from an Intel Iris Xe laptop, for comparison.
-const LAPTOP = { sponza: [4.64, 2.57, 5.83, 3.83], cubes: [2.69, 49.3, 10.06, 18.9], lights: [9.17, 6.61, 23.05, 9.74] };
+const LAPTOP = { sponza: [3.11, 3.45, 6.55, 4.44], cubes: [2.43, 49.2, 10.1, 18.8], lights: [5.58, 7.27, 23.8, 10.3] };
 const STORE = 'winding-compare-suite';
 const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) ?? { runs: [] }; } catch { return { runs: [] }; } };
 const save = (state) => { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* no storage: results show at the end of each scene only */ } };
