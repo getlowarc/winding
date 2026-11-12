@@ -15,8 +15,9 @@ import {
 import { HandleAllocator, handleIndex } from '../src/core/handle.js';
 import {
   textureImageIndex, textureSamplerIndex, samplerDescriptor, materialTextureSlots,
-  imageSize, usedImages, imageColorSpaces,
+  imageSize, usedImages, imageColorSpaces, decodeImages,
 } from '../src/scene/gltf/images.js';
+import { solidKTX2URI } from './fixtures/demoModel.js';
 import { TransformStore } from '../src/scene/transform.js';
 import { unweldAndComputeFlatNormals, generateTangents } from '../src/scene/gltf/tangents.js';
 import { meshGLB } from '../src/scene/gltf/write.js';
@@ -1428,6 +1429,9 @@ test('anisotropy is only requested when every filter is linear', () => {
   assert.equal(samplerDescriptor({ minFilter: 9987, magFilter: 9729 }).maxAnisotropy, 16);
   assert.equal(samplerDescriptor({ magFilter: 9728 }).maxAnisotropy, 1, 'nearest mag');
   assert.equal(samplerDescriptor({ minFilter: 9984 }).maxAnisotropy, 1, 'nearest min');
+  // How many is the engine's: Winding.create's anisotropy.
+  assert.equal(samplerDescriptor({ minFilter: 9987, magFilter: 9729 }, 4).maxAnisotropy, 4, 'as asked');
+  assert.equal(samplerDescriptor({ magFilter: 9728 }, 4).maxAnisotropy, 1, 'and still 1 where a filter is nearest');
 });
 
 test('sRGB is decided by the slot, not by the image', () => {
@@ -2501,6 +2505,102 @@ test('image sizes come from the header, before anything is decoded', () => {
   assert.deepEqual(imageSize(webp), { width: 4096, height: 32 });
 
   assert.equal(imageSize(Uint8Array.from([0x47, 0x49, 0x46, 0x38])), null, 'GIF is not a glTF image');
+});
+
+test("a KTX2 image's size comes from its header too, and it is marked as one", () => {
+  const ktx2 = Uint8Array.from(atob(solidKTX2URI(64, [[1, 2, 3, 4]]).split(',')[1]), (c) => c.charCodeAt(0));
+  assert.deepEqual(imageSize(ktx2), { width: 64, height: 64, ktx2: true });
+});
+
+test("a texture's KTX2 image (KHR_texture_basisu) is the one used, ahead of its fallback", () => {
+  const json = {
+    images: [{ uri: 'a.png' }, { uri: 'a.ktx2' }, { uri: 'b.ktx2' }],
+    textures: [{ source: 0, extensions: { KHR_texture_basisu: { source: 1 } } }, { extensions: { KHR_texture_basisu: { source: 2 } } }],
+    materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, normalTexture: { index: 1 } }],
+  };
+  assert.equal(textureImageIndex(json, 0), 1);
+  assert.equal(textureImageIndex(json, 1), 2, 'with no fallback at all');
+  assert.deepEqual([...usedImages(json)].sort(), [1, 2], 'the PNG fallback is never fetched');
+});
+
+await atest('a file that requires KHR_texture_basisu loads', async () => {
+  await loadGLTF(makeGLB({ asset: { version: '2.0' }, extensionsUsed: ['KHR_texture_basisu'], extensionsRequired: ['KHR_texture_basisu'] }, null));
+});
+
+/** A document whose one material samples each of `uris`, as base colour then normal. */
+const sampling = (uris) => ({
+  images: uris.map((uri) => ({ uri })),
+  textures: uris.map((_, i) => ({ extensions: { KHR_texture_basisu: { source: i } } })),
+  materials: [{ pbrMetallicRoughness: { baseColorTexture: { index: 0 } }, ...(uris.length > 1 ? { normalTexture: { index: 1 } } : {}) }],
+});
+const COLOURS = [[200, 60, 30, 255], [30, 200, 60, 255], [60, 30, 200, 255], [9, 9, 9, 128]];
+
+await atest('KTX2 images decode to their levels in the format asked, with no workers given', async () => {
+  const landed = [];
+  const [image] = await decodeImages(sampling([solidKTX2URI(8, COLOURS)]), [], {
+    ktx2Target: 'astc', onImage: (index, decoded) => landed.push([index, decoded]),
+  });
+  assert.deepEqual([image.width, image.height, image.target, image.levels.length], [8, 8, 'astc', 4]);
+  assert.equal(landed[0][1], image, 'handed to the uploader as it lands');
+});
+
+await atest('KTX2 images go to as many workers as are allowed, made only when one is waiting, and closed after', async () => {
+  // A stand-in for the browser worker: same messages, answered on a later turn.
+  const made = [];
+  class FakeWorker {
+    constructor() { this.terminated = false; this.jobs = 0; made.push(this); }
+    async postMessage({ bytes, target }, transfer) {
+      assert.deepEqual(transfer, [bytes.buffer], 'the bytes are transferred, not copied');
+      this.jobs++;
+      await null;
+      const { transcodeKTX2 } = await import('../src/scene/ktx2.js');
+      this.onmessage({ data: transcodeKTX2(bytes, target) });
+    }
+    terminate() { this.terminated = true; }
+  }
+  const uris = [solidKTX2URI(8, COLOURS), solidKTX2URI(4, COLOURS.slice(1)), solidKTX2URI(16, COLOURS)];
+  const json = sampling(uris);
+  json.materials.push({ emissiveTexture: { index: 2 } });
+  const images = await decodeImages(json, [], { ktx2Target: 'bc7', createTranscoder: () => new FakeWorker(), transcoders: 2 });
+  assert.deepEqual(images.map((i) => [i.width, i.target, i.levels.length]), [[8, 'bc7', 4], [4, 'bc7', 3], [16, 'bc7', 4]]);
+  assert.equal(made.length, 2, 'two allowed, so two made for three images');
+  assert.equal(made.reduce((n, w) => n + w.jobs, 0), 3);
+  assert.ok(made.every((w) => w.terminated), 'every worker closed once the images are done');
+
+  // No KTX2, no workers.
+  made.length = 0;
+  await decodeImages({ images: [] }, [], { createTranscoder: () => new FakeWorker() });
+  assert.equal(made.length, 0);
+});
+
+await atest('a transcoder that fails costs its own image, not the ones queued behind it', async () => {
+  const warn = console.warn;
+  const warnings = [];
+  console.warn = (message) => warnings.push(message);
+  try {
+    let first = true;
+    const createTranscoder = () => {
+      const broken = first;
+      first = false;
+      const worker = {
+        postMessage({ bytes, target }) {
+          setTimeout(async () => {
+            if (broken) { worker.onerror({ message: 'module did not load' }); return; }
+            const { transcodeKTX2 } = await import('../src/scene/ktx2.js');
+            worker.onmessage({ data: transcodeKTX2(bytes, target) });
+          });
+        },
+        terminate() {},
+      };
+      return worker;
+    };
+    const images = await decodeImages(sampling([solidKTX2URI(8, COLOURS), solidKTX2URI(8, COLOURS)]), [], { ktx2Target: 'rgba', createTranscoder, transcoders: 1 });
+    assert.equal(images[0], null, 'the image the broken worker had');
+    assert.equal(images[1].target, 'rgba', 'the next one, on a fresh worker');
+    assert.match(warnings[0], /glTF: image 0 .* failed: the transcoder failed: module did not load/);
+  } finally {
+    console.warn = warn;
+  }
 });
 
 test('only images a material samples are decoded', () => {

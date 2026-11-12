@@ -1,0 +1,7 @@
+{
+  "basis_transcoder.js": "40e3c544d5e1ffe11d02194883f50b3e2373e8a4cb930e53ce47e507aaad6b19",
+  "basis_transcoder.wasm": "a9a1b1d6655931b5ff167f0727a3917a275ce5d86548448c252ac1f269c8c9bb",
+  "basis_encoder.js": "9244d4b6b277ab4f2b4a411e6b19e9e6fdf15a1df0b0da171c4b4b542019d888",
+  "basis_encoder.wasm": "360b23bb28f9fe08e7078dfaaed7a3eaef3966e659942bab7137d99fa5291cc5",
+  "LICENSE": "065fcf48d6af21c0b75e23be5ed5753aee75c892e1c2cf178fa6736305614a5c"
+}

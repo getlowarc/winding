@@ -754,6 +754,13 @@ test('every scene counts what draws a primitive, so unload knows when it is free
   assert.equal(primitive.instances, 2, 'the other scene still draws it');
 });
 
+await atest('create refuses an anisotropy that is not a whole number from 1 to 16', async () => {
+  // Refused before any device is asked for, which is why Node can check it.
+  for (const bad of [0, 17, 2.5, '4']) {
+    await assert.rejects(() => Winding.create(null, { anisotropy: bad }), /anisotropy must be a whole number from 1 to 16/, String(bad));
+  }
+});
+
 await atest('create refuses an Environment, which belongs to another device', async () => {
   // It was accepted "to share", and could never work: create() makes a new
   // device every time, and the Environment's cubemaps live on the old one.

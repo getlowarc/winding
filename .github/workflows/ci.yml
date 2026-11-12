@@ -17,8 +17,12 @@
 # request is not checked again, and main -- which takes pull requests only --
 # not at all. A release, which changes the version and the docs, checks the docs.
 #
-# No install step: there are no dependencies -- nothing to cache, nothing to
-# audit, nothing to go stale between a green run and a red one.
+# No install step: there are no dependencies -- nothing to audit, nothing to
+# go stale between a green run and a red one. The one thing fetched is Basis
+# Universal's own transcoder and encoder, test-only, which the KTX2 suites
+# compare every block against: pinned to a commit, checked by SHA-256
+# (test/fetch-basis.mjs), cached by those checksums, and only when one of
+# those suites runs.
 #
 # The GPU suite runs test/gpu.html in headless Chrome. The runner has no GPU,
 # so Chrome's own SwiftShader stands in: a software device, slow, but it
@@ -66,6 +70,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
+      - if: contains(needs.plan.outputs.node, 'uastc') || contains(needs.plan.outputs.node, 'ktx2') || contains(needs.plan.outputs.node, 'etc1s')
+        uses: actions/cache@v4
+        with:
+          path: test/vendor/basis
+          key: basis-${{ hashFiles('test/fixtures/basis.sha256.json') }}
+      - if: contains(needs.plan.outputs.node, 'uastc') || contains(needs.plan.outputs.node, 'ktx2') || contains(needs.plan.outputs.node, 'etc1s')
+        name: Basis Universal's reference, for the KTX2 suites
+        run: node test/fetch-basis.mjs
       - name: The Node suites the change reaches
         run: |
           if [ -z "$SUITES" ]; then echo "No Node suite reaches this change."; exit 0; fi

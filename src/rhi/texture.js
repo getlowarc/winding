@@ -339,10 +339,10 @@ export function linearSampler(rhi) {
     label: 'linear',
     magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear',
     addressModeU: 'repeat', addressModeV: 'repeat',
-    // 16x is the common hardware maximum. Queried limits do not expose it, so
-    // the driver silently clamps -- which is the one case where asking for more
-    // than you can have is safe.
-    maxAnisotropy: 16,
+    // 16x by default, the common hardware maximum: Winding.create's anisotropy.
+    // Queried limits do not expose the maximum, so the driver silently clamps
+    // -- which is the one case where asking for more than you can have is safe.
+    maxAnisotropy: rhi.anisotropy ?? 16,
   }));
 }
 

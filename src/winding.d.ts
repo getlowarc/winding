@@ -154,6 +154,8 @@ export interface AutoExposure {
 export interface WindingOptions {
   label?: string;
   powerPreference?: 'high-performance' | 'low-power';
+  /** Anisotropic filtering of material textures, 1 to 16; 16 by default. Fixed at creation. */
+  anisotropy?: number;
   onDeviceLost?: ((detail: DeviceLost) => void) | null;
   onError?: ((error: GPUError) => void) | null;
   exposure?: number;

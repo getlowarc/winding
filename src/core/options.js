@@ -17,7 +17,7 @@
 export const OPTIONS = {
   create: ['label', 'powerPreference', 'onDeviceLost', 'onError', 'exposure', 'autoExposure', 'antialias', 'grading',
     'post', 'shadows', 'shadowDistance', 'lightDistance', 'ao', 'oit', 'taa', 'fog', 'dof', 'environment', 'maxDraws',
-    'gpuTiming', 'workerCount', 'onDemand'],
+    'gpuTiming', 'workerCount', 'onDemand', 'anisotropy'],
   'create shadows': ['size', 'cascades', 'lambda', 'casterExtent', 'normalBias', 'depthBiasSlope', 'depthBiasConstant', 'localSize'],
   'create post': ['threshold', 'knee', 'filterRadius', 'strength', 'levels', 'antialias', 'grading'],
   createScene: ['environment', 'capacity', 'renderableCapacity', 'lightCapacity'],

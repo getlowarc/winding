@@ -55,6 +55,8 @@ canvas { position: fixed; left: -10000px; top: 0; }
 //                (PlayCanvas's "2048" is the atlas the four share), each
 //                engine's own default filtering
 //   tone mapping ACES in all four
+//   textures     16x anisotropic filtering in all four (Winding's default; the
+//                others' defaults are 1x or 4x, so they are set here)
 //   off          MSAA and FXAA, bloom, ambient occlusion, TAA, auto exposure
 // Not matched, and said so: Winding lights its ambient from an environment
 // map (0.16 ms of Sponza's frame, measured) where the others use a flat
@@ -72,13 +74,13 @@ const q = new URLSearchParams(location.search);
 
 // --- the suite: every scene twice, a page load each, results kept in between ---
 /** The commit a page opened as a file measures. */
-const WINDING_COMMIT = '697f25f10bae2f132cc89211bcd51a95a7f7db4f';
+const WINDING_COMMIT = 'b79fbf41a41fcd6b346ada3d7eec898f6bea2b4f';
 const FROM_FILE = location.protocol === 'file:';
 const PLAN = ['sponza', 'cubes', 'lights', 'sponza', 'cubes', 'lights'];
 const NAMES = { sponza: 'Sponza, sun shadows', cubes: '10,000 moving cubes', lights: '256 point lights' };
 const ENGINES = ['Winding', 'Three.js', 'Babylon.js', 'PlayCanvas'];
 // What the README chart shows, from an Intel Iris Xe laptop, for comparison.
-const LAPTOP = { sponza: [4.64, 2.57, 5.83, 3.83], cubes: [2.69, 49.3, 10.06, 18.9], lights: [9.17, 6.61, 23.05, 9.74] };
+const LAPTOP = { sponza: [3.11, 3.45, 6.55, 4.44], cubes: [2.43, 49.2, 10.1, 18.8], lights: [5.58, 7.27, 23.8, 10.3] };
 const STORE = 'winding-compare-suite';
 const load = () => { try { return JSON.parse(localStorage.getItem(STORE)) ?? { runs: [] }; } catch { return { runs: [] }; } };
 const save = (state) => { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch { /* no storage: results show at the end of each scene only */ } };
@@ -227,6 +229,8 @@ const SCENE = q.get('scene') ?? 'sponza';
 const ROUNDS = Number(q.get('rounds') ?? 8);
 const SHOT = q.get('shot');
 const SPONZA = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Sponza/glTF/Sponza.gltf';
+/** Texture filtering, matched: 16x, Winding's default, given to all four. */
+const ANISOTROPY = 16;
 const BOX = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/Box/glTF-Binary/Box.glb';
 const SUN = [-0.55, -0.82, -0.12];
 const CUBES = 10000;
@@ -320,7 +324,7 @@ const path = SCENE === 'cubes'
 
 async function winding() {
   const engine = await WN.Winding.create(document.getElementById('winding'), {
-    antialias: false, post: { strength: 0 }, shadows: { size: 1024, lambda: 0.5 }, shadowDistance: 40,
+    antialias: false, post: { strength: 0 }, shadows: { size: 1024, lambda: 0.5 }, shadowDistance: 40, anisotropy: ANISOTROPY,
   });
   engine.gpu.resize(W, H);
   const scene = engine.createScene({ capacity: CUBES + 1000 });
@@ -370,6 +374,11 @@ async function three() {
     turn = (t) => { for (let i = 0; i < CUBES; i++) meshes[i].rotation.y = t * spinOf(i); };
   } else {
     const gltf = await new GLTFLoader().loadAsync(SPONZA);
+    gltf.scene.traverse((object) => {
+      for (const material of [object.material ?? []].flat()) {
+        for (const value of Object.values(material)) if (value?.isTexture) value.anisotropy = ANISOTROPY;
+      }
+    });
     scene.add(gltf.scene);
     if (SCENE === 'sponza') {
       renderer.shadowMap.enabled = true;
@@ -436,6 +445,7 @@ async function babylon() {
     turn = (t) => { for (let i = 0; i < CUBES; i++) cubes[i].rotation.y = t * spinOf(i); };
   } else {
     const result = await B.ImportMeshAsync(SPONZA, scene);
+    for (const texture of scene.textures) texture.anisotropicFilteringLevel = ANISOTROPY;
     if (SCENE === 'sponza') {
       const sun = new B.DirectionalLight('sun', new B.Vector3(...SUN), scene);
       sun.intensity = 4;
@@ -511,6 +521,7 @@ async function playcanvas() {
     const asset = new pc.Asset('sponza', 'container', { url: SPONZA });
     app.assets.add(asset);
     await new Promise((resolve, reject) => { asset.ready(resolve); asset.on('error', reject); app.assets.load(asset); });
+    for (const texture of asset.resource.textures ?? []) if (texture.resource) texture.resource.anisotropy = ANISOTROPY;
     app.root.addChild(asset.resource.instantiateRenderEntity({ castShadows: SCENE === 'sponza', receiveShadows: SCENE === 'sponza' }));
     if (SCENE === 'sponza') {
       // The resolution is the atlas the four cascades share: 1024 each.

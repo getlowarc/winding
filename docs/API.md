@@ -136,6 +136,7 @@ Creates an engine on a `<canvas>`: requests the WebGPU device, compiles the rend
 | `gpuTiming` | `false` | Time every pass on the GPU. Read results from `engine.renderer.gpuTiming`, and switch at any time with `engine.renderer.gpuTiming.enabled`. Does nothing on a device without `timestamp-query`. |
 | `workerCount` | `min(cores - 1, 7)` | Transform workers. Workers only run when the page is cross-origin isolated (COOP + COEP); otherwise work runs on the main thread and this is ignored. `0` runs inline. |
 | `onDemand` | `true` | Starting value of [`engine.onDemand`](#engine-ondemand). Pass `false` to draw every frame. |
+| `anisotropy` | `16` | Anisotropic filtering of material textures, a whole number from 1 to 16: how many samples a texture's filtering takes where a surface is seen at a slant -- a floor or wall running away from the camera. Lower is softer there and cheaper: textured Sponza at 1280×720 on Intel Iris Xe draws about 13% faster at `1` than at `16`. Fixed at creation. Throws `'create: anisotropy must be a whole number from 1 to 16, got <value>'`. |
 
 `shadows` options:
 
@@ -227,6 +228,8 @@ scene.add(helmet);
 
 Notes: every call allocates, the same file included. Free a model you no longer need with [`engine.unload`](#engine-unload). The file itself is not kept once the model is built: `source` is `null`. An image larger than the device's biggest texture is left out, with a warning in the console, and its material uses its factor alone. A relative `baseURL` is taken against the page, as a relative link in it would be.
 
+KTX2 images (`KHR_texture_basisu`) are read, in both of Basis Universal's modes, and preferred over a PNG or JPEG the file keeps as a fallback, which is then not downloaded. A UASTC image is made what the GPU samples: ASTC 4x4 where the device has it (nothing lost: UASTC is a subset of it), else BC7 (desktop GPUs), else RGBA8. Workers undo the file's zstd; ASTC and BC7 are then transcoded on the GPU, a compute dispatch an image, and RGBA8 on the workers. ASTC and BC7 take a quarter of RGBA8's memory, a byte a texel, and are faster to sample; the file's own mip levels are used as they are. A KTX2 with a single level, or whose width or height is not a multiple of 4, comes as RGBA8 with mips made on the GPU, as a PNG does. An ETC1S (BasisLZ) image, the smaller files, is transcoded on the workers to ASTC 4x4 or BC7, the same choice, block for block as Basis Universal's transcoder writes it (BC7's chroma filter included), else RGBA8, with the file's own mips. The workers are started by the first KTX2 image of a load and closed when its images are done; they need no cross-origin isolation. The GPU transcoder is built on first use, once a device.
+
 <a id="engine-unload"></a>
 ### `engine.unload(asset)` → `void`
 
@@ -293,24 +296,24 @@ Notes: the arrays are written into a glTF file and loaded, so a mesh made this w
 
 Loads an image as a mipmapped GPU texture, for sprites (`scene.addSprite({ texture })`).
 
-`source` is a URL string, a `Blob`, an `ImageBitmap`, or anything `createImageBitmap` takes.
+`source` is a URL string, a `Blob`, an `ImageBitmap`, or anything `createImageBitmap` takes. A URL or `Blob` holding a KTX2 file (Basis UASTC or ETC1S, known by its header, not its name) is transcoded instead, as [`engine.load`](#engine-load) does its KTX2 images: to ASTC 4x4 or BC7 where the device has one, keeping the file's own mips, else RGBA8.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `srgb` | `true` | The image holds colour. Pass `false` for data such as masks. |
+| `srgb` | `true` | The image holds colour. Pass `false` for data such as masks. For a KTX2, this decides, not the file's own transfer function. |
 | `pixelated` | `false` | For pixel art: enlarged, each texel stays a hard square, like CSS `image-rendering: pixelated`. |
 | `label` | `'texture'` | GPU label, for error messages. |
 | `fetch` | `globalThis.fetch` | Replaces `fetch` for downloading a URL `source`. |
 
 Returns: `{ texture, view, width, height, pixelated }`.
-Throws: `'loadTexture: <url> returned <status>'`; `'loadTexture: this engine was destroyed'`; decode errors from `createImageBitmap`.
+Throws: `'loadTexture: <url> returned <status>'`; `'loadTexture: this engine was destroyed'`; `'loadTexture: <label> is <w>x<h>, past this device's <max>'` for a KTX2 too big for the device, before any of it is transcoded; decode errors from `createImageBitmap`, and from the KTX2 transcoder (`'ktx2: ...'`, `'etc1s: ...'`).
 
 ```js
 const pin = await engine.loadTexture('pin.png', { pixelated: true });
 scene.addSprite({ texture: pin, position: [0, 1, 0] });
 ```
 
-Notes: the pixels are used as authored, with no colour conversion or premultiplied alpha. Free with [`engine.unload`](#engine-unload).
+Notes: the pixels are used as authored, with no colour conversion or premultiplied alpha. A KTX2 with one level, or a size that is not whole 4x4 blocks, comes as RGBA8 with mips made as an image's are. Free with [`engine.unload`](#engine-unload).
 
 <a id="engine-loadfont"></a>
 ### `engine.loadFont(css)` → `Promise<Font>`

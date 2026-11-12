@@ -29,7 +29,9 @@ export const DEPTH_COMPARE = 'greater';
  * Requesting a feature the hardware lacks fails device creation outright, so
  * every entry here must have a working fallback path.
  */
-const OPTIONAL_FEATURES = ['timestamp-query'];
+// The two block-compressed texture families KTX2 images are transcoded to:
+// BC on desktop GPUs, ASTC on Apple and mobile ones (glTF loading picks).
+const OPTIONAL_FEATURES = ['timestamp-query', 'texture-compression-bc', 'texture-compression-astc'];
 
 /**
  * The limits a scene's size runs into: buffers that grow with objects, lights
@@ -83,6 +85,12 @@ async function requestDevice(options) {
 export class Device {
   constructor(adapter, device, canvas, options) {
     this._options = options;
+    /**
+     * How many samples a material texture's filtering may take along a
+     * surface seen at a slant: 1 to 16. Every material sampler takes it
+     * (linearSampler, and each glTF sampler's in textures.js). Set at creation.
+     */
+    this.anisotropy = options.anisotropy ?? 16;
     this.adapter = adapter;
     /** The raw GPUDevice. Public: dropping to tier 0 must never require a fork. */
     this.device = device;

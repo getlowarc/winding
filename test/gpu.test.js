@@ -13,6 +13,8 @@
 // full frame records and submits without the device complaining.
 
 import { EXTENSION_TEXTURES } from '../src/scene/gltf/images.js';
+import { unpackBlock, encodeBC7, encodeASTC } from '../src/scene/uastc.js';
+import { UastcGPU } from '../src/render/uastcGPU.js';
 import { Winding, Camera, Camera2D } from '../src/winding.js';
 import { Benchmark } from '../src/bench.js';
 import { Environment } from '../src/render/ibl.js';
@@ -20,7 +22,7 @@ import { CLUSTER_Z, MAX_LIGHTS_PER_CLUSTER } from '../src/render/clustered.js';
 import { shaderErrors } from '../src/rhi/shader.js';
 import { NOT_BATCHED, DRAW_DATA_BYTES } from '../src/render/gpudriven.js';
 import {
-  buildDemoGLB, buildRiggedGLB, buildMorphedGLB, buildFeatureGLB, buildLodGLB, twoToneImageURI,
+  buildDemoGLB, buildRiggedGLB, buildMorphedGLB, buildFeatureGLB, buildLodGLB, twoToneImageURI, solidKTX2URI,
 } from './fixtures/demoModel.js';
 import { pbrShader } from '../src/render/shaders/pbr.js';
 import { soak, SCENARIOS } from './fixtures/soak.js';
@@ -1115,6 +1117,115 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     }
 
     return `${results.length} features drawn and read back`;
+  });
+
+  await step('UASTC transcoded on the GPU is the JavaScript transcoder, block for block, in every mode', async () => {
+    // Random blocks of every mode -- their fields are only bits, so any bytes
+    // with a mode's code and a pattern in its table are a block -- spread over
+    // levels of different sizes, so each level's padded rows are checked too.
+    let seed = 7;
+    const random = () => (seed = (seed * 16807) % 2147483647) & 255;
+    const PATTERNS = { 2: 30, 3: 11, 4: 30, 7: 19, 9: 30, 16: 30 };
+    const perMode = new Map();
+    const block = unpackBlock(new Uint8Array(16), 0);
+    while ([...perMode.values()].reduce((n, list) => n + list.length, 0) < 19 * 400 && seed !== 0) {
+      const bytes = Uint8Array.from({ length: 16 }, random);
+      let mode;
+      try { mode = unpackBlock(bytes, 0, block).mode; } catch { continue; }
+      if (PATTERNS[mode] !== undefined && block.pattern >= PATTERNS[mode]) continue;
+      const list = perMode.get(mode) ?? [];
+      if (list.length < 400) { list.push(bytes); perMode.set(mode, list); }
+    }
+    const modes = [...perMode.keys()].sort((a, b) => a - b);
+    if (modes.length !== 19) throw new Error(`random blocks reached modes ${modes} only`);
+    const all = modes.flatMap((m) => perMode.get(m));
+    // Levels of 32x8, 20x12, 4x4 texels, then the rest in one row.
+    const shapes = [[8, 2], [5, 3], [1, 1]];
+    const used = shapes.reduce((n, [w, h]) => n + w * h, 0);
+    shapes.push([all.length - used, 1]);
+    let next = 0;
+    const levels = shapes.map(([across, down]) => {
+      const data = new Uint8Array(across * down * 16);
+      for (let i = 0; i < across * down; i++) data.set(all[next++], i * 16);
+      return { width: across * 4, height: down * 4, data };
+    });
+    const gpu = UastcGPU.for(engine.gpu);
+    const device = engine.gpu.device;
+    let checked = 0;
+    for (const [target, encode] of [['bc7', encodeBC7], ['astc', encodeASTC]]) {
+      const made = await gpu.transcode({ levels }, target);
+      const read = device.createBuffer({ size: made.buffer.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      const encoder = device.createCommandEncoder();
+      encoder.copyBufferToBuffer(made.buffer, 0, read, 0, made.buffer.size);
+      device.queue.submit([encoder.finish()]);
+      await read.mapAsync(GPUMapMode.READ);
+      const out = new Uint8Array(read.getMappedRange().slice(0));
+      read.destroy();
+      made.destroy();
+      const expected = new Uint8Array(16);
+      levels.forEach((level, l) => {
+        const { offset, bytesPerRow } = made.levels[l];
+        const across = level.width / 4;
+        for (let b = 0; b < level.data.length / 16; b++) {
+          encode(unpackBlock(level.data, b * 16, block), expected, 0);
+          const at = offset + Math.floor(b / across) * bytesPerRow + (b % across) * 16;
+          for (let i = 0; i < 16; i++) {
+            if (out[at + i] !== expected[i]) {
+              throw new Error(`${target}, level ${l}, block ${b} (mode ${block.mode}): GPU ${Array.from(out.subarray(at, at + 16))}, JavaScript ${Array.from(expected)}`);
+            }
+          }
+          checked++;
+        }
+      });
+    }
+    return `${checked} blocks, ${all.length} in each of BC7 and ASTC, every mode, over ${levels.length} levels`;
+  });
+
+  await step('a KTX2 texture loads in the block format the GPU has, every level, and draws as its PNG does', async () => {
+    // Each level one solid colour, built byte by byte (no encoder in a browser test).
+    const COLOURS = [[200, 60, 30, 255], [30, 200, 60, 255], [60, 30, 200, 255], [90, 90, 90, 255]];
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '64px';
+    canvas.style.height = '64px';
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas, { antialias: false, post: { strength: 0 } });
+    try {
+      probe.gpu.device.pushErrorScope('validation');
+      probe.gpu.resize(64, 64);
+      const { features } = probe.gpu;
+      const expected = features.has('texture-compression-astc') ? 'astc-4x4-unorm-srgb'
+        : features.has('texture-compression-bc') ? 'bc7-rgba-unorm-srgb' : 'rgba8unorm-srgb';
+      const unlit = { baseColorFactor: [1, 1, 1, 1], materialExtensions: { KHR_materials_unlit: {} } };
+      // Through engine.load, so through the real worker (ktx2Worker.js) too.
+      const ktx2 = await probe.load(buildFeatureGLB({ ...unlit, imageURI: solidKTX2URI(8, COLOURS), basisu: true }));
+      const made = [...ktx2.textures._textures.values()];
+      if (made.length !== 1 || made[0].format !== expected || made[0].mipLevelCount !== 4) {
+        throw new Error(`made ${made.map((t) => `${t.format} x${t.mipLevelCount}`).join(', ')}, not one ${expected} of 4 levels`);
+      }
+      const png = await probe.load(buildFeatureGLB({ ...unlit, imageURI: twoToneImageURI(`rgb(${COLOURS[0].slice(0, 3)})`, `rgb(${COLOURS[0].slice(0, 3)})`) }));
+      const cam = new Camera({ fovY: 1.0, near: 0.1 });
+      cam.position.set([0, 0, 2]);
+      cam.target.set([0, 0, 0]);
+      const centre = async (asset) => {
+        const scene = probe.createScene();
+        scene.add(asset);
+        probe.renderFrame(scene, cam);
+        const pixels = await probe.gpu.readPixels();
+        const i = (32 * 64 + 32) * 4;
+        return [pixels[i], pixels[i + 1], pixels[i + 2]];
+      };
+      const fromKTX2 = await centre(ktx2), fromPNG = await centre(png);
+      // ASTC's solid block is the colour exactly; BC7's is as near as its endpoints come.
+      if (fromKTX2.some((c, k) => Math.abs(c - fromPNG[k]) > 2)) {
+        throw new Error(`the KTX2 drew ${fromKTX2}, its PNG ${fromPNG}`);
+      }
+      const error = await probe.gpu.device.popErrorScope();
+      if (error) throw new Error(`validation: ${error.message}`);
+      return `${expected}, 4 levels; drew ${fromKTX2} where the PNG drew ${fromPNG}`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
   });
 
   await step('two directional lights each cast their own shadow', async () => {
@@ -2998,6 +3109,48 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
       && cutout.at(0.45)[0] < 20 && cutout.at(0.55)[0] > 200;
     if (!ok) throw new Error(report);
     return report;
+  });
+
+  await step("loadTexture takes a KTX2: the block format the GPU has and the file's mips, or RGBA8 mipped from one level", async () => {
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '64px';
+    canvas.style.height = '64px';
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas);
+    try {
+      probe.gpu.device.pushErrorScope('validation');
+      const { features } = probe.gpu;
+      const expected = features.has('texture-compression-astc') ? 'astc-4x4-unorm-srgb'
+        : features.has('texture-compression-bc') ? 'bc7-rgba-unorm-srgb' : 'rgba8unorm-srgb';
+      const COLOURS = [[200, 60, 30, 255], [30, 200, 60, 255], [60, 30, 200, 255], [90, 90, 90, 255]];
+      const ktx2 = await probe.loadTexture(solidKTX2URI(8, COLOURS));
+      const one = await probe.loadTexture(solidKTX2URI(8, COLOURS.slice(0, 1)));
+      const png = await probe.loadTexture(twoToneImageURI(`rgb(${COLOURS[0].slice(0, 3)})`, `rgb(${COLOURS[0].slice(0, 3)})`));
+      const made = [ktx2, one].map(({ texture }) => `${texture.format} x${texture.mipLevelCount}`);
+      if (made[0] !== `${expected} x4` || made[1] !== 'rgba8unorm-srgb x4') {
+        throw new Error(`made ${made.join(' and ')}, not ${expected} x4 and rgba8unorm-srgb x4`);
+      }
+      // Each drawn over the whole view, so its first level is what shows.
+      const { width: W, height: H, pixelRatio: r } = probe.gpu;
+      const centre = async (texture) => {
+        const scene = probe.createScene();
+        scene.addSprite({ texture, position: [0, 0], size: [W / r, H / r], pivot: [0, 0] });
+        probe.renderFrame(scene, new Camera2D({ background: [0, 0, 0, 1] }));
+        const pixels = await probe.gpu.readPixels();
+        const i = ((H >> 1) * W + (W >> 1)) * 4;
+        return [pixels[i], pixels[i + 1], pixels[i + 2]];
+      };
+      const fromKTX2 = await centre(ktx2), fromOne = await centre(one), fromPNG = await centre(png);
+      if ([fromKTX2, fromOne].some((c) => c.some((v, k) => Math.abs(v - fromPNG[k]) > 2))) {
+        throw new Error(`the KTX2s drew ${fromKTX2} and ${fromOne}, the PNG ${fromPNG}`);
+      }
+      const error = await probe.gpu.device.popErrorScope();
+      if (error) throw new Error(`validation: ${error.message}`);
+      return `${made.join(', ')}; drew ${fromKTX2} and ${fromOne} where the PNG drew ${fromPNG}`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
   });
 
   await step('2D lands colours exactly, blends in sRGB, stacks by layer, keeps pixel art sharp, and moves one slot', async () => {

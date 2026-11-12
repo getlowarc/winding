@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-12
+
+**Compressed textures, with no dependency.** KTX2 images (`KHR_texture_basisu`), in both of Basis
+Universal's modes, load as ASTC or BC7 where the GPU has one: a quarter of the texture memory, and
+fewer bytes read a pixel. Sponza with its images as UASTC, on Iris Xe at 1280x720: 95 MB of texture
+instead of 380, a GPU frame 12% shorter, and a first load of 1.2 s instead of 1.7. Every block is
+the one Basis Universal's own transcoder writes; UASTC is transcoded on the GPU. Also: how sharply
+textures are filtered can now be chosen, and the merged depth prepass reads positions alone.
+
+### Added
+
+- **`Winding.create({ anisotropy })`: how sharply material textures are filtered at a slant**, 1 to
+  16, still 16 by default. A floor or wall running away from the camera is sampled up to that many
+  times a pixel to keep its texture sharp; on a weaker GPU that is a real share of the frame --
+  textured Sponza at 1280x720 on Iris Xe draws about 13% faster at 1 than at 16 -- and now a game can
+  choose. Fixed at creation.
+- **KTX2 textures (`KHR_texture_basisu`), in Basis UASTC.** `engine.load` reads them and makes each
+  what the GPU samples: ASTC 4x4 where the device has it, losing nothing, else BC7, else RGBA8.
+  Workers undo the file's zstd and a compute shader transcodes, so the load costs little more than
+  PNG's. Sponza with its 69 images as UASTC, on Iris Xe at 1280x720, against as shipped: a quarter
+  of the texture memory (95 MB, not 380), the GPU frame 12% shorter (the forward pass 13%), a load
+  of 0.55 s against 0.47 (the first, cold one 1.2 s against 1.7), and the mips the file carries
+  instead of made ones. The container, its zstd and the transcoder are Winding's own, no dependency, and every
+  block is the one Basis Universal's transcoder writes, on the CPU and the GPU alike. A file's PNG
+  fallback is no longer fetched. ETC1S (BasisLZ) files, Basis's smaller mode, are read too, on the
+  workers, to ASTC or BC7 as Basis's transcoder writes them: a 1024x1024 texture with mips in 24 ms
+  to ASTC (Basis's wasm: 12) and 57 ms to BC7, whose chroma filter is most of it (Basis: 23).
+  `engine.loadTexture` takes a KTX2 file too, for sprites, tilesets and anything else outside a glTF.
+  A page that never loads one never downloads the transcoder: it is fetched by the first KTX2.
+
+### Changed
+
+- **The depth prepass reads positions alone.** Meshes merged into one draw (a level of distinct
+  meshes) lay down their depth before they are shaded, and that prepass fetched each vertex whole --
+  60 bytes -- for its 12 bytes of position. It reads the positions-only copy the shadow passes already
+  use: the same depth, so the same pixels. Sponza at 1280x720 on Iris Xe, one frame held: the
+  forward pass from 2.02 to 1.95 ms.
+
 ## [1.9.2] - 2026-11-11
 
 **Crowds and shadows, cheaper.** A crowd's moving parts -- their transforms, world boxes, draw
@@ -2678,7 +2716,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/getlowarc/winding/compare/v1.9.2...v1.10.0
 [1.9.2]: https://github.com/getlowarc/winding/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/getlowarc/winding/compare/v1.8.0...v1.9.0
