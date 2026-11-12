@@ -608,6 +608,12 @@ function iseTables() {
     QUINT_CODES[q0 + 5 * q1 + 25 * q2] = Q;
   }
 }
+/** ASTC's 8-bit code for each group of five trits, by their value in base 3 (lowest first). */
+export function tritCodes() {
+  iseTables();
+  return TRIT_CODES;
+}
+
 // Where each group's packed bits sit between its values' bits: after value i, this many.
 const TRIT_SPLIT = [2, 2, 1, 2, 1], QUINT_SPLIT = [3, 2, 2];
 

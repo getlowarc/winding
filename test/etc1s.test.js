@@ -91,6 +91,28 @@ test("every level becomes the BC7 blocks Basis's own transcoder writes, chroma f
   console.log(`      ${blocks} blocks, all the same; ${filtered} of them the chroma filter's`);
 });
 
+test("every level becomes the ASTC 4x4 blocks Basis's own transcoder writes, alpha included", () => {
+  let blocks = 0;
+  for (const { name, w, h, rgba } of IMAGES) {
+    for (const quality of [1, 64, 255]) {
+      const file = encodeETC1S(B, rgba, w, h, { quality });
+      const image = transcodeKTX2(file, 'astc');
+      if (image.target !== 'astc') continue;
+      image.levels.forEach((level, l) => {
+        const theirs = transcodeReference(B, file, l, 'cTFASTC_4x4_RGBA');
+        assert.equal(level.data.length, theirs.length, `${name}, quality ${quality}, level ${l}: size`);
+        for (let b = 0; b < theirs.length; b += 16) {
+          blocks++;
+          for (let i = 0; i < 16; i++) {
+            if (level.data[b + i] !== theirs[b + i]) assert.fail(`${name}, quality ${quality}, level ${l}, block ${b / 16}: ours ${Array.from(level.data.subarray(b, b + 16))}, Basis ${Array.from(theirs.subarray(b, b + 16))}`);
+          }
+        }
+      });
+    }
+  }
+  console.log(`      ${blocks} blocks, all the same`);
+});
+
 test('an ETC1S file is read as BasisLZ with its global data, and one level comes as that level', () => {
   const { w, h, rgba } = IMAGES[0];
   const file = encodeETC1S(B, rgba, w, h, { mips: false });

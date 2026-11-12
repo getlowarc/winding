@@ -12,6 +12,8 @@
 // An ETC1S block is an ETC1 block with one colour and one intensity table for
 // both halves: a 5-bit RGB base, a 3-bit table, and a 2-bit selector a texel.
 
+import { tritCodes } from './uastc.js';
+
 const fail = (why) => { throw new Error(`etc1s: ${why}`); };
 
 /** Bits LSB first, from bytes [start, end); past the end, zeros. At most 16 a read. */
@@ -383,10 +385,10 @@ export function equals1() {
 }
 
 /** The colour table's ten mappings for (intensity, 5-bit value, selector range): lo, hi, err each. */
-const COLOUR_TABLE = new Map();
+const COLOUR_TABLE = new Array(1536);
 export function colourSolutions(inten, g, range) {
   const key = (inten * 32 + g) * 6 + range;
-  let solutions = COLOUR_TABLE.get(key);
+  let solutions = COLOUR_TABLE[key];
   if (solutions) return solutions;
   solutions = new Uint16Array(30);
   const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
@@ -413,15 +415,15 @@ export function colourSolutions(inten, g, range) {
     }
     solutions[m * 3] = bestLo; solutions[m * 3 + 1] = bestHi; solutions[m * 3 + 2] = Math.min(best, 0xffff);
   }
-  COLOUR_TABLE.set(key, solutions);
+  COLOUR_TABLE[key] = solutions;
   return solutions;
 }
 
 /** The alpha table entry for (intensity, 5-bit value, selector range): [lo, hi, selector translation]. */
-const ALPHA_TABLE = new Map();
+const ALPHA_TABLE = new Array(1536);
 export function alphaSolution(inten, g, range) {
   const key = (inten * 32 + g) * 6 + range;
-  let solution = ALPHA_TABLE.get(key);
+  let solution = ALPHA_TABLE[key];
   if (solution) return solution;
   const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
   const block = table.map((m) => clamp255(base + m));
@@ -449,7 +451,7 @@ export function alphaSolution(inten, g, range) {
       if (total < best) { best = total; solution = [lo, hi, selectors]; }
     }
   }
-  ALPHA_TABLE.set(key, solution);
+  ALPHA_TABLE[key] = solution;
   return solution;
 }
 
@@ -817,6 +819,237 @@ export function etc1sToBC7(global, slice, alpha, width, height, { filter = true 
       bc7Alpha(global, flags, alpha.endpoints[b], alpha.selectors[b]);
       storeBlock(out, b * 16);
     }
+  }
+  return out;
+}
+
+// ---- to ASTC 4x4, as Basis Universal's transcoder writes it -------------
+//
+// Also under the Apache License 2.0 (see the BC7 section's header and
+// THIRD_PARTY_NOTICES.md): ported from basisu_transcoder.cpp's
+// convert_etc1s_to_astc_4x4 as Basis's web build compiles it (without
+// BASISD_SUPPORT_ASTC_HIGHER_OPAQUE_QUALITY), with its [0, 47] conversion
+// table worked out when first used by the search Basis ran to make it
+// (create_etc1_to_astc_conversion_table_0_47).
+
+/** ASTC's unquantized value for each BISE integer of range 13 ([0, 47]: a trit above 4 bits). */
+const UNQUANT_47 = new Uint8Array(48);
+for (let trit = 0; trit < 3; trit++) {
+  for (let bit = 0; bit < 16; bit++) {
+    const A = bit & 1 ? 511 : 0, B = (bit >> 1) | ((bit >> 1) << 6);
+    const unq = (trit * 22 + B) ^ A;
+    UNQUANT_47[bit | (trit << 4)] = (A & 0x80) | (unq >> 2);
+  }
+}
+/** The [0, 47] value whose unquantized value comes closest to each 8-bit value; and the pair whose 1/3 point does. */
+let SINGLE_0 = null, SINGLE_1 = null;
+function singleColour() {
+  if (SINGLE_0) return;
+  SINGLE_0 = new Uint8Array(256); SINGLE_1 = new Uint8Array(512);
+  for (let i = 0; i < 256; i++) {
+    let lowest = Infinity;
+    for (let lo = 0; lo < 48; lo++) {
+      for (let hi = 0; hi < 48; hi++) {
+        const l = UNQUANT_47[lo] | (UNQUANT_47[lo] << 8), h = UNQUANT_47[hi] | (UNQUANT_47[hi] << 8);
+        const e = Math.abs((Math.floor((l * 43 + h * 21 + 32) / 64) >> 8) - i);
+        if (e < lowest) { lowest = e; SINGLE_1[i * 2] = lo; SINGLE_1[i * 2 + 1] = hi; }
+      }
+    }
+    lowest = Infinity;
+    for (let lo = 0; lo < 48; lo++) {
+      const e = Math.abs(UNQUANT_47[lo] - i);
+      if (e < lowest) { lowest = e; SINGLE_0[i] = lo; }
+    }
+  }
+}
+
+/** ASTC's weights for the four selectors: 0, 1/3, 2/3, 1 in 64ths as Basis rounds them. */
+const ASTC_W2 = [0, 21, 43, 64];
+/** The [0, 47] table's ten mappings for (intensity, 5-bit value, selector range): lo, hi, err each. */
+const ASTC_TABLE = new Array(1536);
+function astcSolutions(inten, g, range) {
+  const key = (inten * 32 + g) * 6 + range;
+  let solutions = ASTC_TABLE[key];
+  if (solutions) return solutions;
+  solutions = new Uint16Array(30);
+  const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
+  const block = table.map((m) => clamp255(base + m));
+  const heavy = inten === 7 && low === 0 && high === 3;
+  const colours = [0, 0, 0, 0];
+  for (let m = 0; m < 10; m++) {
+    const map = MAPPINGS[m];
+    let bestLo = 0, bestHi = 0, best = Infinity;
+    for (let hi = 0; hi < 48; hi++) {
+      const c1 = UNQUANT_47[hi] | (UNQUANT_47[hi] << 8);
+      for (let lo = 0; lo < 48; lo++) {
+        const c0 = UNQUANT_47[lo] | (UNQUANT_47[lo] << 8);
+        for (let s = 0; s < 4; s++) colours[s] = Math.floor((c0 * (64 - ASTC_W2[s]) + c1 * ASTC_W2[s] + 32) / 64) >> 8;
+        let err = 0;
+        for (let s = low; s <= high; s++) {
+          const d = block[s] - colours[map[s]];
+          err += d * d * (heavy && (s === 0 || s === 3) ? 8 : 1);
+        }
+        if (err < best) { best = err; bestLo = lo; bestHi = hi; }
+      }
+    }
+    solutions[m * 3] = bestLo; solutions[m * 3 + 1] = bestHi; solutions[m * 3 + 2] = Math.min(best, 0xffff);
+  }
+  ASTC_TABLE[key] = solutions;
+  return solutions;
+}
+/** The mapping with the least error, the first of equals: g_etc1_to_astc_best_grayscale_mapping. */
+function bestGreyMapping(solutions) {
+  let best = Infinity, mapping = 0;
+  for (let m = 0; m < 10; m++) if (solutions[m * 3 + 2] < best) { best = solutions[m * 3 + 2]; mapping = m; }
+  return mapping;
+}
+
+const ASTC_OUT = new Uint8Array(16);
+/** astc_set_bits: OR `bits` bits of value in from `at`. */
+function orBits(value, bits, at) {
+  while (bits > 0) {
+    const shift = at & 7, n = Math.min(bits, 8 - shift);
+    ASTC_OUT[at >> 3] |= (value << shift) & 255;
+    value >>>= n; bits -= n; at += n;
+  }
+}
+// The fixed leading bytes of each kind of block Basis writes: void extent, CEM 12 with 1-bit weights, with 2-bit.
+const VOID_EXTENT = Uint8Array.of(0xfc, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff);
+const CEM12_RANGE0 = Uint8Array.of(0x41, 0x84, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0xc0);
+const CEM12_RANGE2 = Uint8Array.of(0x42, 0x84, 0x01, 0x00, 0, 0, 0, 0xc0);
+const REVERSED2 = [0, 2, 1, 3];
+/** astc_encode_trits for 4-bit values: five BISE integers of range 13 from `at`; returns where it ended. */
+function encodeTrits(values, from, at) {
+  const v0 = values[from], v1 = values[from + 1], v2 = values[from + 2], v3 = values[from + 3], v4 = values[from + 4];
+  const T = TRITS[(v0 >> 4) + (v1 >> 4) * 3 + (v2 >> 4) * 9 + (v3 >> 4) * 27 + (v4 >> 4) * 81];
+  orBits((v0 & 15) | ((T & 3) << 4) | ((v1 & 15) << 6), 10, at);
+  orBits(((T >> 2) & 3) | ((v2 & 15) << 2) | (((T >> 4) & 1) << 6) | ((v3 & 15) << 7) | (((T >> 5) & 3) << 11) | ((v4 & 15) << 13) | (((T >> 7) & 1) << 17), 18, at + 10);
+  return at + 28;
+}
+let TRITS = null;
+
+const ENDS10 = new Uint8Array(10), WEIGHTS32 = new Uint8Array(32);
+
+/** convert_etc1s_to_astc_4x4: one block, colour from (e, sel), alpha from (ae, asel) or none, into ASTC_OUT. */
+function astcBlock(global, flags, e, sel, ae, asel) {
+  const { colour, intensity } = global.endpoints, rows = global.selectors;
+  const colourAt = (endpoint, c, s) => clamp255(expand5(colour[endpoint * 3 + c]) + INTENSITY[intensity[endpoint]][s]);
+  const selectorAt = (entry, t) => (rows[entry * 4 + (t >> 2)] >> (2 * (t & 3))) & 3;
+  const hasAlpha = ae >= 0;
+  let constantAlpha = 255, alphaUnique = 1;
+  if (hasAlpha) {
+    alphaUnique = flags.unique[asel];
+    if (alphaUnique === 1) constantAlpha = colourAt(ae, 1, flags.lo[asel]);
+  }
+  const low = flags.lo[sel], high = flags.hi[sel], unique = flags.unique[sel];
+  ASTC_OUT.fill(0);
+  if (unique === 1 && alphaUnique === 1) {
+    ASTC_OUT.set(VOID_EXTENT);
+    for (let c = 0; c < 3; c++) { const v = colourAt(e, c, low); orBits(v | (v << 8), 16, 64 + 16 * c); }
+    orBits(constantAlpha | (constantAlpha << 8), 16, 112);
+    return;
+  }
+  const blk = ENDS10, weights = WEIGHTS32;
+  blk.fill(0);
+  if (unique <= 2 && alphaUnique <= 2) {
+    // Block truncation: 8-bit endpoints, 1-bit weights, nothing lost.
+    for (let c = 0; c < 3; c++) { blk[c * 2] = colourAt(e, c, low); blk[c * 2 + 1] = colourAt(e, c, high); }
+    let invert = false;
+    if (blk[1] + blk[3] + blk[5] < blk[0] + blk[2] + blk[4]) {
+      for (let c = 0; c < 3; c++) { const v = blk[c * 2]; blk[c * 2] = blk[c * 2 + 1]; blk[c * 2 + 1] = v; }
+      invert = true;
+    }
+    if (hasAlpha) {
+      const al = flags.lo[asel], ah = flags.hi[asel];
+      blk[6] = colourAt(ae, 1, al); blk[7] = colourAt(ae, 1, ah);
+      for (let t = 0; t < 16; t++) weights[t * 2 + 1] = selectorAt(asel, t) === ah ? 1 : 0;
+    } else {
+      blk[6] = blk[7] = 255;
+      for (let t = 0; t < 16; t++) weights[t * 2 + 1] = 0;
+    }
+    for (let t = 0; t < 16; t++) {
+      const s = selectorAt(sel, t) === high ? 1 : 0;
+      weights[t * 2] = invert ? 1 - s : s;
+    }
+    ASTC_OUT.set(CEM12_RANGE0);
+    for (let i = 0; i < 8; i++) orBits(blk[i], 8, 17 + 8 * i);
+    for (let i = 0; i < 32; i++) orBits(weights[i], 1, 127 - i);
+    return;
+  }
+  // CEM 12, [0, 47] endpoints, 2-bit weights, dual plane: the alpha first.
+  if (hasAlpha) {
+    const al = flags.lo[asel], ah = flags.hi[asel], inten = intensity[ae];
+    if (al === ah) {
+      singleColour();
+      const g = colourAt(ae, 1, al);
+      blk[6] = SINGLE_1[g * 2]; blk[7] = SINGLE_1[g * 2 + 1];
+      for (let t = 0; t < 16; t++) weights[t * 2 + 1] = 1;
+    } else if (inten >= 7 && flags.unique[asel] === 2 && al === 0 && ah === 3) {
+      singleColour();
+      blk[6] = SINGLE_0[colourAt(ae, 1, 0)]; blk[7] = SINGLE_0[colourAt(ae, 1, 3)];
+      for (let t = 0; t < 16; t++) weights[t * 2 + 1] = selectorAt(asel, t) === ah ? 3 : 0;
+    } else {
+      const table = astcSolutions(inten, colour[ae * 3 + 1], RANGE_INDEX[al][ah]), m = bestGreyMapping(table);
+      blk[6] = table[m * 3]; blk[7] = table[m * 3 + 1];
+      for (let t = 0; t < 16; t++) weights[t * 2 + 1] = MAPPINGS[m][selectorAt(asel, t)];
+    }
+  } else {
+    // 1 is 255 once unquantized.
+    blk[6] = blk[7] = 1;
+    for (let t = 0; t < 16; t++) weights[t * 2 + 1] = 0;
+  }
+  const inten = intensity[e];
+  const swapIfDarker = () => {
+    if (UNQUANT_47[blk[1]] + UNQUANT_47[blk[3]] + UNQUANT_47[blk[5]] >= UNQUANT_47[blk[0]] + UNQUANT_47[blk[2]] + UNQUANT_47[blk[4]]) return false;
+    for (let c = 0; c < 3; c++) { const v = blk[c * 2]; blk[c * 2] = blk[c * 2 + 1]; blk[c * 2 + 1] = v; }
+    return true;
+  };
+  if (low === high) {
+    singleColour();
+    for (let c = 0; c < 3; c++) { const v = colourAt(e, c, low); blk[c * 2] = SINGLE_1[v * 2]; blk[c * 2 + 1] = SINGLE_1[v * 2 + 1]; }
+    const invert = swapIfDarker();
+    for (let t = 0; t < 16; t++) weights[t * 2] = invert ? 2 : 1;
+  } else if (inten >= 7 && unique === 2 && low === 0 && high === 3) {
+    singleColour();
+    for (let c = 0; c < 3; c++) { blk[c * 2] = SINGLE_0[colourAt(e, c, 0)]; blk[c * 2 + 1] = SINGLE_0[colourAt(e, c, 3)]; }
+    const invert = swapIfDarker();
+    for (let t = 0; t < 16; t++) {
+      const s = selectorAt(sel, t) === low ? 0 : 3;
+      weights[t * 2] = invert ? 3 - s : s;
+    }
+  } else {
+    const range = RANGE_INDEX[low][high];
+    const tr = astcSolutions(inten, colour[e * 3], range), tg = astcSolutions(inten, colour[e * 3 + 1], range), tb = astcSolutions(inten, colour[e * 3 + 2], range);
+    let best = Infinity, m = 0;
+    for (let i = 0; i < 10; i++) {
+      const err = tr[i * 3 + 2] + tg[i * 3 + 2] + tb[i * 3 + 2];
+      if (err < best) { best = err; m = i; }
+    }
+    blk[0] = tr[m * 3]; blk[1] = tr[m * 3 + 1]; blk[2] = tg[m * 3]; blk[3] = tg[m * 3 + 1]; blk[4] = tb[m * 3]; blk[5] = tb[m * 3 + 1];
+    const invert = swapIfDarker();
+    for (let t = 0; t < 16; t++) {
+      const s = MAPPINGS[m][selectorAt(sel, t)];
+      weights[t * 2] = invert ? 3 - s : s;
+    }
+  }
+  ASTC_OUT.set(CEM12_RANGE2);
+  encodeTrits(blk, 5, encodeTrits(blk, 0, 17));
+  // Weight i, bit-reversed, at bit 126 - 2i: the first 16 in bits 96-127, the rest in 64-95.
+  let top = 0, bottom = 0;
+  for (let i = 0; i < 16; i++) top |= REVERSED2[weights[i]] << (30 - 2 * i);
+  for (let i = 16; i < 32; i++) bottom |= REVERSED2[weights[i]] << (62 - 2 * i);
+  for (let k = 0; k < 4; k++) { ASTC_OUT[8 + k] |= (bottom >>> (8 * k)) & 255; ASTC_OUT[12 + k] |= (top >>> (8 * k)) & 255; }
+}
+
+/** A level's decoded slices as ASTC 4x4 blocks, as Basis Universal's transcoder writes them. */
+export function etc1sToASTC(global, slice, alpha, width, height) {
+  TRITS ??= tritCodes();
+  const blocks = Math.ceil(width / 4) * Math.ceil(height / 4);
+  const flags = selectorFlags(global);
+  const out = new Uint8Array(blocks * 16);
+  for (let b = 0; b < blocks; b++) {
+    astcBlock(global, flags, slice.endpoints[b], slice.selectors[b], alpha ? alpha.endpoints[b] : -1, alpha ? alpha.selectors[b] : -1);
+    out.set(ASTC_OUT, b * 16);
   }
   return out;
 }

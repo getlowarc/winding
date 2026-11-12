@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   made ones. The container, its zstd and the transcoder are Winding's own, no dependency, and every
   block is the one Basis Universal's transcoder writes, on the CPU and the GPU alike. A file's PNG
   fallback is no longer fetched. ETC1S (BasisLZ) files, Basis's smaller mode, are read too, on the
-  workers: to BC7 on desktop GPUs, the blocks Basis's transcoder writes (about 3x its time, 66 ms a
-  1024x1024 texture with mips here), and to RGBA8 elsewhere for now.
+  workers, to ASTC or BC7 as Basis's transcoder writes them: a 1024x1024 texture with mips in 23 ms
+  to ASTC (Basis's wasm: 12) and 65 ms to BC7, whose chroma filter is the cost (Basis: 23).
 
 ### Changed
 

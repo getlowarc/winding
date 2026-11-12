@@ -10,7 +10,7 @@
 
 import { zstdDecompress } from '../core/zstd.js';
 import { uastcToRGBA, uastcToBC7, uastcToASTC } from './uastc.js';
-import { readGlobalData, decodeSlice, etc1sToRGBA, etc1sToBC7 } from './etc1s.js';
+import { readGlobalData, decodeSlice, etc1sToRGBA, etc1sToBC7, etc1sToASTC } from './etc1s.js';
 
 const IDENTIFIER = [0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -113,12 +113,13 @@ export function transcodeKTX2(bytes, target, { gpu = false } = {}) {
   if (file.depth > 1 || file.layers > 1 || file.faces !== 1) fail('not a 2D image (a volume, an array or a cube)');
   const { width, height, levels } = file;
   if (file.basis === 'etc1s') {
-    // ETC1S to BC7 here, on the CPU (its chroma filter's arithmetic is the
-    // CPU's to match); to ASTC not yet, so RGBA8 there. Same rules as UASTC
-    // for one level or a size of part blocks.
-    const etc1sTarget = target === 'bc7' && levels.length > 1 && width % 4 === 0 && height % 4 === 0 ? 'bc7' : 'rgba';
+    // ETC1S to BC7 or ASTC here, on the CPU (BC7's chroma filter's arithmetic
+    // is the CPU's to match). Same rules as UASTC for one level or a size of
+    // part blocks.
+    const blocks = levels.length > 1 && width % 4 === 0 && height % 4 === 0;
+    const etc1sTarget = blocks && (target === 'bc7' || target === 'astc') ? target : 'rgba';
     const global = readGlobalData(file.globalData ?? new Uint8Array(0), levels.length);
-    const convert = etc1sTarget === 'bc7' ? etc1sToBC7 : etc1sToRGBA;
+    const convert = { bc7: etc1sToBC7, astc: etc1sToASTC, rgba: etc1sToRGBA }[etc1sTarget];
     return {
       width, height, target: etc1sTarget,
       levels: levels.map((level, l) => {

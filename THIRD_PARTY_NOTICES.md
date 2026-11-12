@@ -4,12 +4,13 @@ Winding is under the MIT license (see LICENSE), except for the part named here.
 
 ## Basis Universal
 
-The ETC1S-to-BC7 transcoding in `src/scene/etc1s.js` -- the section headed "to BC7 (mode 5)": its
-colour and alpha conversion, chroma filter, BC7 mode 5 encoder and the searches that build its
-conversion tables -- is ported from Basis Universal's `transcoder/basisu_transcoder.cpp`
+The ETC1S-to-BC7 and ETC1S-to-ASTC transcoding in `src/scene/etc1s.js` -- the sections headed "to
+BC7 (mode 5)" and "to ASTC 4x4": their colour and alpha conversion, BC7's chroma filter and mode 5
+encoder, ASTC's block packing, and the searches that build their conversion tables -- is ported
+from Basis Universal's `transcoder/basisu_transcoder.cpp`
 (commit 073eb6a0a34a23d77e75e54f41dcd9653a52da83), Copyright (C) 2019-2026 Binomial LLC, under the
 Apache License 2.0. It was changed in the porting: rewritten in JavaScript, and its tables computed
-when first used instead of carried. That section is under the Apache License 2.0, below.
+when first used instead of carried. Those sections are under the Apache License 2.0, below.
 
 The rest of the KTX2 support -- the KTX2 reader, zstd, ETC1S decoding, and UASTC to RGBA, BC7 and
 ASTC on the CPU and GPU -- is written from the public-domain specifications of those formats.

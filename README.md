@@ -439,10 +439,8 @@ These are real and currently unaddressed.
   Anything not coincident renders identically every frame. A fixed order would need a prefix-sum
   compaction — more passes, every frame, for every scene — to hold still an artifact that is a
   content error either way.
-- **KTX2 textures in ETC1S take 4 bytes a texel on ASTC devices.** Both Basis modes are read
-  (`KHR_texture_basisu`) and become ASTC or BC7 at a byte a texel, except ETC1S where there is no
-  BC7 (Apple and mobile GPUs): there it is RGBA8 for now, as PNG, JPEG and WebP are. Draco geometry is refused:
-  meshopt does the same job and is read, and `gltf-transform meshopt` converts one to the other.
+- **Draco geometry is refused.** meshopt does the same job and is read, and `gltf-transform meshopt`
+  converts one to the other.
 - **A 3D camera doesn't draw tilemaps, shapes or paths, and a HUD doesn't draw
   particles.** The particle system follows one scene's emitters at a time.
 - **2D lights cast no shadows and read no normal maps.** Every light is checked at every lit pixel,
@@ -471,5 +469,6 @@ includes; questions go to [Discussions](https://github.com/getlowarc/winding/dis
 
 ## License
 
-MIT — see [LICENSE](LICENSE). One part is Apache-2.0: the ETC1S-to-BC7 transcoding, ported from
-Basis Universal; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has its license and notices.
+MIT — see [LICENSE](LICENSE). One part is Apache-2.0: the ETC1S-to-BC7 and ETC1S-to-ASTC
+transcoding, ported from Basis Universal; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) has its
+license and notices.
