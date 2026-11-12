@@ -8,9 +8,11 @@
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
 import { readKTX2, KTX2_NONE, KTX2_BASISLZ, KTX2_ZSTD } from '../src/scene/ktx2.js';
+import { loadBasis, encodeUASTC } from './fixtures/basis.mjs';
 
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log(`  ok  ${name}`); }
+const B = await loadBasis();
 
 const IDENTIFIER = [0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -108,5 +110,28 @@ test('what is not a KTX2 file, or not one this reads, says so', () => {
   assert.throws(() => readKTX2(zlibbed), /ZLIB supercompression/);
   assert.throws(() => readKTX2(ktx2({ width: 4, height: 4, levels: [bytes(8)], model: 163 })), /ETC1S without BasisLZ/);
 });
+
+if (B === null) {
+  console.log("  --  skipped: files from Basis's own encoder (npm run fetch:basis to run it)");
+} else {
+  test("a file from Basis's own encoder: UASTC, sRGB, alpha and every mip, as it wrote them", () => {
+    const w = 96, h = 40, rgba = new Uint8Array(w * h * 4);
+    for (let i = 0; i < rgba.length; i += 4) { rgba[i] = i % 251; rgba[i + 1] = (i >> 3) % 256; rgba[i + 2] = 200; rgba[i + 3] = (i >> 5) % 256; }
+    const t = readKTX2(encodeUASTC(B, rgba, w, h));
+    assert.equal(t.basis, 'uastc');
+    assert.equal(t.srgb, true);
+    assert.equal(t.channels, 'rgba');
+    assert.equal(t.supercompression, KTX2_ZSTD);
+    assert.equal(t.levels.length, 7, '96 down to 1');
+    t.levels.forEach((level, i) => {
+      assert.deepEqual([level.width, level.height], [Math.max(1, w >> i), Math.max(1, h >> i)]);
+      assert.equal(level.data.length, 16 * Math.ceil(level.width / 4) * Math.ceil(level.height / 4), `level ${i}: a 16-byte block each 4x4`);
+    });
+    const linear = readKTX2(encodeUASTC(B, rgba.map((v, i) => (i % 4 === 3 ? 255 : v)), w, h, { srgb: false, mips: false }));
+    assert.equal(linear.srgb, false);
+    assert.equal(linear.channels, 'rgb', 'opaque: no alpha channel');
+    assert.equal(linear.levels.length, 1);
+  });
+}
 
 console.log(`\n${passed} checks passed\n`);

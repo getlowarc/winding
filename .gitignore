@@ -29,3 +29,7 @@ tools/
 
 # Working notes, not shipped
 AUDIT.md
+
+# The Basis Universal reference the transcoder tests compare against: fetched
+# on demand (npm run fetch:basis), never committed.
+test/vendor/
