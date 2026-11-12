@@ -157,9 +157,16 @@ export class Winding {
         + 'or share it between scenes with createScene({ environment }).',
       );
     }
+    // Checked here, before a device is asked for: a sampler given something
+    // else would clamp it or fail later, far from the option that caused it.
+    const anisotropy = options.anisotropy ?? 16;
+    if (!(Number.isInteger(anisotropy) && anisotropy >= 1 && anisotropy <= 16)) {
+      throw new Error(`create: anisotropy must be a whole number from 1 to 16, got ${options.anisotropy}`);
+    }
     const rhi = await createDevice(canvas, {
       label: options.label ?? 'winding',
       powerPreference: options.powerPreference,
+      anisotropy,
       onDeviceLost: options.onDeviceLost,
       onError: options.onError,
     });

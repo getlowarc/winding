@@ -242,7 +242,7 @@ export function textureSamplerIndex(json, textureIndex) {
  * minFilter and mipmapFilter separate. Unspecified filters mean "the client
  * chooses", and trilinear repeat is the choice that surprises nobody.
  */
-export function samplerDescriptor(sampler = {}) {
+export function samplerDescriptor(sampler = {}, anisotropy = 16) {
   const magFilter = sampler.magFilter === GLTF_NEAREST ? 'nearest' : 'linear';
 
   let minFilter = 'linear';
@@ -282,8 +282,9 @@ export function samplerDescriptor(sampler = {}) {
     // Anisotropy is only legal when all three filters are linear; asking for it
     // alongside a nearest filter is a validation error, not a silent downgrade.
     // It is also meaningless without mips.
+    // How many, Winding.create's anisotropy: 16 by default.
     maxAnisotropy: mipped && magFilter === 'linear' && minFilter === 'linear' && mipmapFilter === 'linear'
-      ? 16 : 1,
+      ? anisotropy : 1,
   };
 }
 

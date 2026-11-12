@@ -105,7 +105,7 @@ export class GLTFTextures {
 
     let sampler = this._samplers.get(samplerIndex);
     if (!sampler) {
-      const descriptor = samplerDescriptor(this.json.samplers?.[samplerIndex]);
+      const descriptor = samplerDescriptor(this.json.samplers?.[samplerIndex], this.rhi.anisotropy);
       sampler = this.rhi.device.createSampler({ label: `gltf-sampler-${samplerIndex}`, ...descriptor });
       this._samplers.set(samplerIndex, sampler);
     }

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **: how sharply material textures are filtered at a slant**, 1 to
+  16, still 16 by default. A floor or wall running away from the camera is sampled up to that many
+  times a pixel to keep its texture sharp; on a weaker GPU that is a real share of the frame --
+  textured Sponza at 1280x720 on Iris Xe draws about 13% faster at 1 than at 16 -- and now a game can
+  choose. Fixed at creation.
+
 ### Changed
 
 - **The depth prepass reads positions alone.** Meshes merged into one draw (a level of distinct

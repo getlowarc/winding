@@ -1428,6 +1428,9 @@ test('anisotropy is only requested when every filter is linear', () => {
   assert.equal(samplerDescriptor({ minFilter: 9987, magFilter: 9729 }).maxAnisotropy, 16);
   assert.equal(samplerDescriptor({ magFilter: 9728 }).maxAnisotropy, 1, 'nearest mag');
   assert.equal(samplerDescriptor({ minFilter: 9984 }).maxAnisotropy, 1, 'nearest min');
+  // How many is the engine's: Winding.create's anisotropy.
+  assert.equal(samplerDescriptor({ minFilter: 9987, magFilter: 9729 }, 4).maxAnisotropy, 4, 'as asked');
+  assert.equal(samplerDescriptor({ magFilter: 9728 }, 4).maxAnisotropy, 1, 'and still 1 where a filter is nearest');
 });
 
 test('sRGB is decided by the slot, not by the image', () => {

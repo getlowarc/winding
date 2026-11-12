@@ -83,6 +83,12 @@ async function requestDevice(options) {
 export class Device {
   constructor(adapter, device, canvas, options) {
     this._options = options;
+    /**
+     * How many samples a material texture's filtering may take along a
+     * surface seen at a slant: 1 to 16. Every material sampler takes it
+     * (linearSampler, and each glTF sampler's in textures.js). Set at creation.
+     */
+    this.anisotropy = options.anisotropy ?? 16;
     this.adapter = adapter;
     /** The raw GPUDevice. Public: dropping to tier 0 must never require a fork. */
     this.device = device;

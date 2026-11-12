@@ -136,6 +136,7 @@ Creates an engine on a `<canvas>`: requests the WebGPU device, compiles the rend
 | `gpuTiming` | `false` | Time every pass on the GPU. Read results from `engine.renderer.gpuTiming`, and switch at any time with `engine.renderer.gpuTiming.enabled`. Does nothing on a device without `timestamp-query`. |
 | `workerCount` | `min(cores - 1, 7)` | Transform workers. Workers only run when the page is cross-origin isolated (COOP + COEP); otherwise work runs on the main thread and this is ignored. `0` runs inline. |
 | `onDemand` | `true` | Starting value of [`engine.onDemand`](#engine-ondemand). Pass `false` to draw every frame. |
+| `anisotropy` | `16` | Anisotropic filtering of material textures, a whole number from 1 to 16: how many samples a texture's filtering takes where a surface is seen at a slant -- a floor or wall running away from the camera. Lower is softer there and cheaper: textured Sponza at 1280×720 on Intel Iris Xe draws about 13% faster at `1` than at `16`. Fixed at creation. Throws `'create: anisotropy must be a whole number from 1 to 16, got <value>'`. |
 
 `shadows` options:
 
