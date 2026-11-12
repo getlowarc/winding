@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { readKTX2 } from '../src/scene/ktx2.js';
-import { unpackBlock, uastcToRGBA, uastcToBC7 } from '../src/scene/uastc.js';
+import { unpackBlock, uastcToRGBA, uastcToBC7, uastcToASTC } from '../src/scene/uastc.js';
 import { loadBasis, encodeUASTC, transcodeReference } from './fixtures/basis.mjs';
 
 let passed = 0;
@@ -86,15 +86,16 @@ test("every block decodes to the RGBA Basis's own transcoder gives, at every lev
   console.log(`      modes seen: ${[...modes].sort((a, b) => a - b).join(' ')}`);
 });
 
-test("every block becomes the BC7 block Basis's own transcoder writes, at every level", () => {
+/** Every block of every level transcoded by `transcode` and by Basis to `format`, differences reported by UASTC mode. */
+function sameBlocks(transcode, format) {
   // The first differing block of each UASTC mode, and how many differ, so one run shows every mode's state.
   const first = new Map(), counts = new Map();
   let blocks = 0;
   for (const { name, rdo, file } of corpus) {
     const t = readKTX2(file);
     t.levels.forEach((level, l) => {
-      const ours = uastcToBC7(level.data, level.width, level.height);
-      const theirs = transcodeReference(B, file, l, 'cTFBC7_RGBA');
+      const ours = transcode(level.data, level.width, level.height);
+      const theirs = transcodeReference(B, file, l, format);
       assert.equal(ours.length, theirs.length, `${name}, level ${l}: size`);
       for (let b = 0; b < ours.length; b += 16) {
         blocks++;
@@ -112,6 +113,9 @@ test("every block becomes the BC7 block Basis's own transcoder writes, at every 
   for (const [mode, text] of [...first].sort((a, b) => a[0] - b[0])) console.log(`      mode ${mode}: ${counts.get(mode)} blocks differ; first, ${text}`);
   assert.equal(first.size, 0, `blocks that differ from Basis's, of ${blocks}`);
   console.log(`      ${blocks} blocks, all the same`);
-});
+}
+
+test("every block becomes the BC7 block Basis's own transcoder writes, at every level", () => sameBlocks(uastcToBC7, 'cTFBC7_RGBA'));
+test("every block becomes the ASTC 4x4 block Basis's own transcoder writes, at every level", () => sameBlocks(uastcToASTC, 'cTFASTC_4x4_RGBA'));
 
 console.log(`\n${passed} checks passed\n`);

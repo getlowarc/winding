@@ -1,5 +1,6 @@
 // UASTC LDR 4x4 (Basis Universal), transcoded: each 16-byte block unpacked to
-// its endpoints and weights, then written out as RGBA8 texels or as a BC7 block.
+// its endpoints and weights, then written out as RGBA8 texels, a BC7 block, or
+// an ASTC 4x4 block (the last losing nothing; each held to Basis's own output).
 //
 // Written from Binomial's "UASTC LDR 4x4 Texture Specification", which is in
 // the public domain (CC0): its mode layouts, BISE ranges, dequantization,
@@ -133,10 +134,13 @@ export function unpackBlock(bytes, at, out = {}) {
   }
   const dequant = DEQUANT[range];
   const endpoints = out.endpoints ?? (out.endpoints = new Uint8Array(24));
+  // The BISE integers too, trit or quint above the bits, which ASTC stores as they are.
+  const raw = out.raw ?? (out.raw = new Uint8Array(24));
   for (let i = 0; i < count; i++) {
     const low = readBits(bytes, at, bit, bits);
     bit += bits;
-    endpoints[i] = dequant[(trits || quints ? high[i] << bits : 0) | low];
+    raw[i] = (trits || quints ? high[i] << bits : 0) | low;
+    endpoints[i] = dequant[raw[i]];
   }
 
   // Weights: each subset's anchor texel a bit short (both planes' in a dual-plane mode).
@@ -490,9 +494,148 @@ export function encodeBC7(block, out, at) {
 
 /** A UASTC level as BC7 blocks: the same 16 bytes a 4x4 block. */
 export function uastcToBC7(data, width, height) {
+  return transcodeLevel(data, width, height, encodeBC7);
+}
+
+function transcodeLevel(data, width, height, encode) {
   const blocks = Math.ceil(width / 4) * Math.ceil(height / 4);
   if (data.length < blocks * 16) throw new Error(`uastc: ${data.length} bytes for ${blocks} blocks`);
   const out = new Uint8Array(blocks * 16), block = {};
-  for (let b = 0; b < blocks; b++) encodeBC7(unpackBlock(data, b * 16, block), out, b * 16);
+  for (let b = 0; b < blocks; b++) encode(unpackBlock(data, b * 16, block), out, b * 16);
   return out;
+}
+
+// ---- ASTC 4x4 -------------------------------------------------------------
+//
+// UASTC is a subset of ASTC 4x4, so this loses nothing: the same weights, the
+// same BISE endpoint integers (in the same range ASTC works out from the bits
+// left, by the format's design), the patterns at their ASTC seeds (each checked
+// to give UASTC's pattern under ASTC's partition function). Only the packing
+// differs, and one thing UASTC leaves out: ASTC reads an RGB or RGBA subset whose
+// low endpoint sums brighter than its high one as blue-contracted, so such a
+// subset's endpoints are swapped and its weights inverted.
+
+/** Each pattern's ASTC partition seed: the 2-subset patterns, the 3-subset, and mode 7's. */
+const SEEDS2 = [28, 20, 16, 29, 91, 9, 107, 72, 149, 204, 50, 114, 496, 17, 78, 39, 252, 828, 43, 156, 116, 210, 476, 273, 684, 359, 246, 195, 694, 524];
+const SEEDS3 = [260, 74, 32, 156, 183, 15, 745, 0, 335, 902, 254];
+const SEEDS7 = [36, 48, 61, 137, 161, 183, 226, 281, 302, 307, 479, 495, 593, 594, 605, 799, 812, 988, 993];
+// The block mode for a 4x4 weight grid, by weight bits (ASTC's only 4x4 layout: A = 2, B = 0, and
+// the range bits R and H for 2, 4, 8, 16 or 32 levels); dual plane adds bit 10.
+const BLOCK_MODE = [0, 0x41, 0x42, 0x53, 0x242, 0x253];
+// Colour endpoint modes: LA direct, RGB direct, RGBA direct, by component count.
+const CEM = [0, 0, 4, 8, 12];
+
+// ASTC packs 5 trits into 8 bits and 3 quints into 7 by its own mapping; these
+// invert the format's decoding, by the group's value in base 3 or 5 (lowest digit first).
+let TRIT_CODES = null, QUINT_CODES = null;
+function iseTables() {
+  if (TRIT_CODES) return;
+  const bit = (v, i) => (v >> i) & 1, field = (v, lo, n) => (v >> lo) & ((1 << n) - 1);
+  TRIT_CODES = new Uint8Array(243).fill(255);
+  for (let T = 0; T < 256; T++) {
+    let C, t3, t4, t0, t1, t2;
+    if (field(T, 2, 3) === 7) { C = (field(T, 5, 3) << 2) | field(T, 0, 2); t4 = t3 = 2; }
+    else {
+      C = field(T, 0, 5);
+      if (field(T, 5, 2) === 3) { t4 = 2; t3 = bit(T, 7); } else { t4 = bit(T, 7); t3 = field(T, 5, 2); }
+    }
+    if (field(C, 0, 2) === 3) { t2 = 2; t1 = bit(C, 4); t0 = (bit(C, 3) << 1) | (bit(C, 2) & ~bit(C, 3) & 1); }
+    else if (field(C, 2, 2) === 3) { t2 = 2; t1 = 2; t0 = field(C, 0, 2); }
+    else { t2 = bit(C, 4); t1 = field(C, 2, 2); t0 = (bit(C, 1) << 1) | (bit(C, 0) & ~bit(C, 1) & 1); }
+    // Where a group has more than one code, Basis writes the first.
+    const v = t0 + 3 * t1 + 9 * t2 + 27 * t3 + 81 * t4;
+    if (TRIT_CODES[v] === 255) TRIT_CODES[v] = T;
+  }
+  QUINT_CODES = new Uint8Array(125).fill(255);
+  for (let Q = 0; Q < 128; Q++) {
+    let C, q0, q1, q2;
+    if (field(Q, 1, 2) === 3 && field(Q, 5, 2) === 0) {
+      q2 = (bit(Q, 0) << 2) | ((bit(Q, 4) & ~bit(Q, 0) & 1) << 1) | (bit(Q, 3) & ~bit(Q, 0) & 1);
+      q1 = q0 = 4;
+    } else {
+      if (field(Q, 1, 2) === 3) { q2 = 4; C = (field(Q, 3, 2) << 3) | ((~field(Q, 5, 2) & 3) << 1) | bit(Q, 0); }
+      else { q2 = field(Q, 5, 2); C = field(Q, 0, 5); }
+      if (field(C, 0, 3) === 5) { q1 = 4; q0 = field(C, 3, 2); } else { q1 = field(C, 3, 2); q0 = field(C, 0, 3); }
+    }
+    // Only (4, 4, 4) has more than one code (7, 15, 23, 31); Basis writes 31, the last.
+    QUINT_CODES[q0 + 5 * q1 + 25 * q2] = Q;
+  }
+}
+// Where each group's packed bits sit between its values' bits: after value i, this many.
+const TRIT_SPLIT = [2, 2, 1, 2, 1], QUINT_SPLIT = [3, 2, 2];
+
+/** `values` BISE integers in `range`, ASTC's interleaved way, from the writer's bit on. */
+function putISE(w, values, count, range) {
+  const [bits, trits, quints] = RANGES[range];
+  const mask = (1 << bits) - 1;
+  if (!trits && !quints) { for (let i = 0; i < count; i++) w.put(values[i], bits); return; }
+  const per = trits ? 5 : 3, base = trits ? 3 : 5, split = trits ? TRIT_SPLIT : QUINT_SPLIT, codes = trits ? TRIT_CODES : QUINT_CODES;
+  const end = w.bit + count * bits + Math.ceil(count * (trits ? 8 : 7) / per);
+  for (let g = 0; g < count; g += per) {
+    let digits = 0;
+    for (let i = Math.min(per, count - g) - 1; i >= 0; i--) digits = digits * base + (values[g + i] >> bits);
+    let packed = codes[digits];
+    for (let i = 0; i < per && w.bit < end; i++) {
+      if (g + i < count) w.put(values[g + i] & mask, bits);
+      const n = Math.min(split[i], end - w.bit);
+      w.put(packed & ((1 << n) - 1), n);
+      packed >>= split[i];
+    }
+  }
+}
+
+const ASTC_RAW = new Uint8Array(24), ASTC_WEIGHTS = new Uint8Array(32);
+
+/** One unpacked UASTC block as an ASTC 4x4 block, into out at `at`. */
+export function encodeASTC(block, out, at) {
+  const w = new BitWriter(out, at);
+  const mode = block.mode;
+  if (mode === SOLID) {
+    // A void-extent block: LDR, its extent all ones (none), the colour as UNORM16.
+    w.put(0xfc, 8); w.put(0xfd, 8);
+    for (let i = 2; i < 8; i++) w.put(0xff, 8);
+    for (const c of block.solid) { w.put(c, 8); w.put(c, 8); }
+    return;
+  }
+  iseTables();
+  const comps = COMPS[mode], subsets = SUBSETS[mode], planes = PLANES[mode], wbits = WEIGHT_BITS[mode];
+  // Copies, so the unpacked block stays as it was for any other use.
+  const raw = ASTC_RAW, weights = ASTC_WEIGHTS, e = block.endpoints;
+  raw.set(block.raw);
+  weights.set(block.weights);
+  if (comps >= 3) {
+    const max = (1 << wbits) - 1;
+    for (let s = 0; s < subsets; s++) {
+      const o = s * comps * 2;
+      if (e[o] + e[o + 2] + e[o + 4] <= e[o + 1] + e[o + 3] + e[o + 5]) continue;
+      for (let c = 0; c < comps; c++) { const lo = raw[o + c * 2]; raw[o + c * 2] = raw[o + c * 2 + 1]; raw[o + c * 2 + 1] = lo; }
+      for (let t = 0; t < 16; t++) {
+        if (subsetOf(mode, block.pattern, t) !== s) continue;
+        for (let p = 0; p < planes; p++) weights[t * planes + p] = max - weights[t * planes + p];
+      }
+    }
+  }
+  const blockMode = BLOCK_MODE[wbits] | (planes === 2 ? 0x400 : 0);
+  w.put(blockMode & 255, 8);
+  w.put(blockMode >> 8, 3);
+  w.put(subsets - 1, 2);
+  if (subsets === 1) w.put(CEM[comps], 4);
+  else {
+    const seed = (mode === 3 ? SEEDS3 : mode === 7 ? SEEDS7 : SEEDS2)[block.pattern];
+    w.put(seed & 255, 8);
+    w.put(seed >> 8, 2);
+    w.put(CEM[comps] << 2, 6); // every subset the same mode
+  }
+  putISE(w, raw, comps * 2 * subsets, ENDPOINT_RANGE[mode]);
+  const weightBits = 16 * planes * wbits;
+  if (planes === 2) { w.bit = 126 - weightBits; w.put(block.selector, 2); }
+  // The weights from the block's top bit down, each one's bits reversed with it.
+  for (let i = 0, bit = 127; i < 16 * planes; i++) {
+    for (let b = 0; b < wbits; b++, bit--) if ((weights[i] >> b) & 1) out[at + (bit >> 3)] |= 1 << (bit & 7);
+  }
+}
+
+/** A UASTC level as ASTC 4x4 blocks: the same 16 bytes a 4x4 block, nothing lost. */
+export function uastcToASTC(data, width, height) {
+  return transcodeLevel(data, width, height, encodeASTC);
 }
