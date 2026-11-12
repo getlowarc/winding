@@ -36,6 +36,8 @@ const SOLID = 8;
 
 /** BISE ranges UASTC uses: [bits, trits, quints]. */
 const RANGES = { 7: [2, 1, 0], 8: [4, 0, 0], 11: [5, 0, 0], 12: [3, 0, 1], 13: [4, 1, 0], 18: [5, 0, 1], 19: [6, 1, 0], 20: [8, 0, 0] };
+const RANGE_BITS = new Uint8Array(21), RANGE_TRITS = new Uint8Array(21), RANGE_QUINTS = new Uint8Array(21);
+for (const [range, [b, t, q]] of Object.entries(RANGES)) { RANGE_BITS[range] = b; RANGE_TRITS[range] = t; RANGE_QUINTS[range] = q; }
 
 // Endpoint dequantization, by BISE integer, to [0, 255]: the spec's decoding
 // tables for the trit and quint ranges; bit replication for the binary ones.
@@ -87,89 +89,114 @@ const PATTERNS7 = unpack('0000111100000000,0010001000100010,1100110010000000,000
 const ANCHORS7 = [[0, 4], [0, 2], [2, 0], [0, 7], [8, 0], [0, 1], [0, 3], [0, 1], [2, 0], [0, 1], [0, 8], [2, 0], [0, 1], [0, 7],
   [12, 0], [2, 0], [9, 0], [0, 2], [4, 0]];
 
-/** A 16-byte block's bits, LSB first. */
-function readBits(bytes, at, offset, count) {
-  // At most 8 bits a field, so the two bytes it can straddle hold it. A byte
-  // past the block reads as the next block's, masked away.
-  const i = at + (offset >> 3);
-  return ((bytes[i] | (bytes[i + 1] << 8)) >> (offset & 7)) & ((1 << count) - 1);
+// The block being unpacked, as four 32-bit words (and a fifth, zero, for a
+// field read at the very end): loaded once, so each field is a shift or two.
+const BLOCK = new Int32Array(5);
+function loadBlock(bytes, at) {
+  for (let w = 0; w < 4; w++) {
+    const i = at + w * 4;
+    BLOCK[w] = bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24);
+  }
+}
+/** `count` bits (at most 8) of the loaded block from bit `offset`, LSB first. */
+function field(offset, count) {
+  const w = offset >> 5, s = offset & 31;
+  let v = BLOCK[w] >>> s;
+  if (s + count > 32) v |= BLOCK[w + 1] << (32 - s);
+  return v & ((1 << count) - 1);
 }
 
-/** The trits or quints of a group, least significant first. */
-function splitGroup(value, base, count, out) {
-  for (let i = 0; i < count; i++) { out.push(value % base); value = Math.floor(value / base); }
-}
+// A group's trits (5 in 8 bits) or quints (3 in 7 bits), least significant
+// first, by the group's value: the base-3 or base-5 digits UASTC stores.
+const TRIT_DIGITS = new Uint8Array(256 * 5), QUINT_DIGITS = new Uint8Array(128 * 3);
+for (let v = 0; v < 256; v++) for (let i = 0, x = v; i < 5; i++, x = Math.floor(x / 3)) TRIT_DIGITS[v * 5 + i] = x % 3;
+for (let v = 0; v < 128; v++) for (let i = 0, x = v; i < 3; i++, x = Math.floor(x / 5)) QUINT_DIGITS[v * 3 + i] = x % 5;
 const TRIT_GROUP_BITS = [0, 2, 4, 5, 7, 8];
 const QUINT_GROUP_BITS = [0, 3, 5, 7];
+const HIGH = new Uint8Array(24);
+
+/** A fresh unpacked block, every field in place so the object keeps one shape. */
+export const newBlock = () => ({
+  mode: 0, pattern: 0, selector: 0, solid: new Uint8Array(4),
+  endpoints: new Uint8Array(24), raw: new Uint8Array(24), weights: new Uint8Array(32),
+});
 
 /**
  * One UASTC block at bytes[at..at+16), unpacked: { mode, solid (RGBA) | endpoints
- * (dequantized, ASTC's order), weights (raw, planes interleaved), pattern, selector }.
+ * (dequantized, ASTC's order), raw (their BISE integers), weights (raw, planes
+ * interleaved), pattern, selector }.
  */
-export function unpackBlock(bytes, at, out = {}) {
+export function unpackBlock(bytes, at, out = newBlock()) {
   const mode = HUFF_MODES[bytes[at] & 127];
   if (mode === 19) throw new Error('uastc: a block in the reserved mode 19');
   out.mode = mode;
+  loadBlock(bytes, at);
   if (mode === SOLID) {
-    out.solid = [readBits(bytes, at, 5, 8), readBits(bytes, at, 13, 8), readBits(bytes, at, 21, 8), readBits(bytes, at, 29, 8)];
+    const solid = out.solid;
+    solid[0] = field(5, 8); solid[1] = field(13, 8);
+    solid[2] = field(21, 8); solid[3] = field(29, 8);
     return out;
   }
   let bit = START[mode];
-  out.pattern = PATTERN_BITS[mode] ? readBits(bytes, at, bit, PATTERN_BITS[mode]) : 0;
-  bit += PATTERN_BITS[mode];
-  out.selector = mode === 17 ? 3 : HAS_SELECTOR[mode] ? readBits(bytes, at, bit, 2) : 0;
+  const patternBits = PATTERN_BITS[mode];
+  out.pattern = patternBits ? field(bit, patternBits) : 0;
+  bit += patternBits;
+  out.selector = mode === 17 ? 3 : HAS_SELECTOR[mode] ? field(bit, 2) : 0;
   if (HAS_SELECTOR[mode]) bit += 2;
 
   const range = ENDPOINT_RANGE[mode];
-  const [bits, trits, quints] = RANGES[range];
+  const bits = RANGE_BITS[range], trits = RANGE_TRITS[range], quints = RANGE_QUINTS[range];
   const count = COMPS[mode] * 2 * SUBSETS[mode];
-  const high = [];
-  if (trits || quints) {
-    const per = trits ? 5 : 3, base = trits ? 3 : 5, sizes = trits ? TRIT_GROUP_BITS : QUINT_GROUP_BITS;
-    for (let left = count; left > 0; left -= per) {
-      const n = Math.min(per, left);
-      splitGroup(readBits(bytes, at, bit, sizes[n]), base, n, high);
-      bit += sizes[n];
+  if (trits) {
+    for (let i = 0; i < count; i += 5) {
+      const n = Math.min(5, count - i), v = field(bit, TRIT_GROUP_BITS[n]);
+      bit += TRIT_GROUP_BITS[n];
+      for (let k = 0; k < n; k++) HIGH[i + k] = TRIT_DIGITS[v * 5 + k];
+    }
+  } else if (quints) {
+    for (let i = 0; i < count; i += 3) {
+      const n = Math.min(3, count - i), v = field(bit, QUINT_GROUP_BITS[n]);
+      bit += QUINT_GROUP_BITS[n];
+      for (let k = 0; k < n; k++) HIGH[i + k] = QUINT_DIGITS[v * 3 + k];
     }
   }
-  const dequant = DEQUANT[range];
-  const endpoints = out.endpoints ?? (out.endpoints = new Uint8Array(24));
-  // The BISE integers too, trit or quint above the bits, which ASTC stores as they are.
-  const raw = out.raw ?? (out.raw = new Uint8Array(24));
+  const dequant = DEQUANT[range], endpoints = out.endpoints, raw = out.raw;
   for (let i = 0; i < count; i++) {
-    const low = readBits(bytes, at, bit, bits);
+    const low = field(bit, bits);
     bit += bits;
-    raw[i] = (trits || quints ? high[i] << bits : 0) | low;
-    endpoints[i] = dequant[raw[i]];
+    const v = trits || quints ? (HIGH[i] << bits) | low : low;
+    raw[i] = v;
+    endpoints[i] = dequant[v];
   }
 
   // Weights: each subset's anchor texel a bit short (both planes' in a dual-plane mode).
-  const wbits = WEIGHT_BITS[mode], planes = PLANES[mode];
-  const anchors = anchorsOf(mode, out.pattern);
-  const weights = out.weights ?? (out.weights = new Uint8Array(32));
-  for (let t = 0; t < 16; t++) {
-    const short = anchors.includes(t) ? 1 : 0;
-    for (let p = 0; p < planes; p++) {
-      weights[t * planes + p] = readBits(bytes, at, bit, wbits - short);
-      bit += wbits - short;
+  const wbits = WEIGHT_BITS[mode], weights = out.weights;
+  const anchors = anchorMask(mode, out.pattern);
+  if (PLANES[mode] === 1) {
+    for (let t = 0; t < 16; t++) {
+      const n = wbits - ((anchors >> t) & 1);
+      weights[t] = field(bit, n);
+      bit += n;
+    }
+  } else {
+    for (let t = 0; t < 16; t++) {
+      const n = wbits - ((anchors >> t) & 1);
+      weights[t * 2] = field(bit, n);
+      weights[t * 2 + 1] = field(bit + n, n);
+      bit += 2 * n;
     }
   }
   return out;
 }
 
-function anchorsOf(mode, pattern) {
-  if (SUBSETS[mode] === 1) return [0];
-  if (mode === 3) return ANCHORS3[pattern];
-  if (mode === 7) return ANCHORS7[pattern];
-  return ANCHORS2[pattern];
-}
-
-/** The texel's subset, in UASTC's numbering. */
-function subsetOf(mode, pattern, t) {
-  if (SUBSETS[mode] === 1) return 0;
-  if (mode === 3) return PATTERNS3[pattern][t];
-  if (mode === 7) return PATTERNS7[pattern][t];
-  return PATTERNS2[pattern][t];
+/** Each subset's anchor texel, as a bit per texel. */
+const mask = (list) => list.map((anchors) => anchors.reduce((m, t) => m | (1 << t), 0));
+const ANCHOR_MASK2 = mask(ANCHORS2), ANCHOR_MASK3 = mask(ANCHORS3), ANCHOR_MASK7 = mask(ANCHORS7);
+function anchorMask(mode, pattern) {
+  if (SUBSETS[mode] === 1) return 1;
+  if (mode === 3) return ANCHOR_MASK3[pattern];
+  if (mode === 7) return ANCHOR_MASK7[pattern];
+  return ANCHOR_MASK2[pattern];
 }
 
 /** ASTC's interpolation of 8-bit endpoints at a [0, 64] weight, decoding as linear (the spec's srgb = false). */
@@ -179,6 +206,8 @@ function interpolate(l, h, w) {
   return ((l * (64 - w) + h * w + 32) >> 6) >> 8;
 }
 
+const VALUE = new Uint8Array(4);
+
 /** An unpacked block's 16 texels as RGBA8, into out at `at` with `stride` bytes a row. */
 export function decodeBlock(block, out, at, stride) {
   const { mode } = block;
@@ -187,13 +216,15 @@ export function decodeBlock(block, out, at, stride) {
     return;
   }
   const comps = COMPS[mode], planes = PLANES[mode], table = WEIGHTS[WEIGHT_BITS[mode]];
-  const e = block.endpoints, w = block.weights;
-  const value = new Uint8Array(4);
+  const e = block.endpoints, w = block.weights, value = VALUE;
+  const subsets = SUBSETS[mode], map = subsets === 1 ? null
+    : mode === 3 ? PATTERNS3[block.pattern] : mode === 7 ? PATTERNS7[block.pattern] : PATTERNS2[block.pattern];
+  // The component the second plane weights, if there is one.
+  const second = planes === 2 ? (comps === 2 && block.selector === 3 ? 1 : block.selector) : -1;
   for (let t = 0; t < 16; t++) {
-    const base = subsetOf(mode, block.pattern, t) * comps * 2;
+    const base = map === null ? 0 : map[t] * comps * 2;
     for (let c = 0; c < comps; c++) {
-      const plane = planes === 2 && c === (comps === 2 && block.selector === 3 ? 1 : block.selector) ? 1 : 0;
-      value[c] = interpolate(e[base + c * 2], e[base + c * 2 + 1], table[w[t * planes + plane]]);
+      value[c] = interpolate(e[base + c * 2], e[base + c * 2 + 1], table[w[t * planes + (c === second ? 1 : 0)]]);
     }
     const o = at + (t >> 2) * stride + (t & 3) * 4;
     if (comps === 2) { out[o] = out[o + 1] = out[o + 2] = value[0]; out[o + 3] = value[1]; }
@@ -207,7 +238,7 @@ export function uastcToRGBA(data, width, height) {
   if (data.length < bw * bh * 16) throw new Error(`uastc: ${data.length} bytes for ${bw * bh} blocks`);
   // Whole blocks first, then the texels inside the image kept.
   const padded = new Uint8Array(bw * 4 * bh * 4 * 4), stride = bw * 16;
-  const block = {};
+  const block = newBlock();
   for (let by = 0; by < bh; by++) {
     for (let bx = 0; bx < bw; bx++) {
       unpackBlock(data, (by * bw + bx) * 16, block);
@@ -274,46 +305,30 @@ const TO_BC7_WEIGHTS = { '1>2': [0, 3], '2>4': [0, 5, 10, 15], '3>4': [0, 2, 4, 
 
 const f = Math.fround;
 
-/**
- * BC7 endpoints with p-bits, from [0, 1] endpoints xl and xh: the spec's
- * determine_unique_pbits (shared === false) or determine_shared_pbits, in
- * single precision as written, so ties and roundings fall as Basis's do.
- * Writes the colours (comp bits, before the p-bit) and the p-bits.
- */
-function bestPbits(shared, totalComps, compBits, xl, xh, lo, hi, pbits) {
+// determine_unique_pbits and determine_shared_pbits, the spec's p-bit
+// searches, sum per component a term that depends only on that component's
+// 8-bit value, the p-bit and the bit depth. So each term is worked out once,
+// in single precision as the spec writes it (Math.fround), and a block adds
+// them up in the same order: the same sums, so the same ties as Basis's.
+const PBIT_TABLES = [];
+/** For `compBits` (before the p-bit), by p * 256 + value: the quantized value, and the unique and shared error terms. */
+function pbitTables(compBits) {
+  if (PBIT_TABLES[compBits]) return PBIT_TABLES[compBits];
   const totalBits = compBits + 1, iscalep = (1 << totalBits) - 1, scalep = f(iscalep);
-  let best0 = f(1e9), best1 = f(1e9);
-  const minC = [0, 0, 0, 0], maxC = [0, 0, 0, 0];
+  const q = new Uint8Array(512), unique = new Float32Array(512), shared = new Float32Array(512);
   for (let p = 0; p < 2; p++) {
-    for (let c = 0; c < 4; c++) {
-      const qmin = Math.trunc(f(f(f(f(xl[c] * scalep) - p) / 2) + 0.5)) * 2 + p;
-      const qmax = Math.trunc(f(f(f(f(xh[c] * scalep) - p) / 2) + 0.5)) * 2 + p;
-      minC[c] = Math.min(Math.max(qmin, p), iscalep - 1 + p);
-      maxC[c] = Math.min(Math.max(qmax, p), iscalep - 1 + p);
-    }
-    let err0 = f(0), err1 = f(0);
-    for (let i = 0; i < totalComps; i++) {
-      let sl = (minC[i] << (8 - totalBits)) & 255; sl |= sl >> totalBits;
-      let sh = (maxC[i] << (8 - totalBits)) & 255; sh |= sh >> totalBits;
-      if (shared) {
-        const dl = f(f(sl / 255) - xl[i]), dh = f(f(sh / 255) - xh[i]);
-        err0 = f(err0 + f(f(dl * dl) + f(dh * dh)));
-      } else {
-        const dl = f(sl - f(xl[i] * 255)), dh = f(sh - f(xh[i] * 255));
-        err0 = f(err0 + f(dl * dl));
-        err1 = f(err1 + f(dh * dh));
-      }
-    }
-    if (shared) {
-      if (err0 < best0) {
-        best0 = err0; pbits[0] = pbits[1] = p;
-        for (let j = 0; j < 4; j++) { lo[j] = minC[j] >> 1; hi[j] = maxC[j] >> 1; }
-      }
-    } else {
-      if (err0 < best0) { best0 = err0; pbits[0] = p; for (let j = 0; j < 4; j++) lo[j] = minC[j] >> 1; }
-      if (err1 < best1) { best1 = err1; pbits[1] = p; for (let j = 0; j < 4; j++) hi[j] = maxC[j] >> 1; }
+    for (let v = 0; v < 256; v++) {
+      const x = f(v / 255);
+      const m = Math.min(Math.max(Math.trunc(f(f(f(f(x * scalep) - p) / 2) + 0.5)) * 2 + p, p), iscalep - 1 + p);
+      let expanded = (m << (8 - totalBits)) & 255;
+      expanded |= expanded >> totalBits;
+      const du = f(expanded - f(x * 255)), ds = f(f(expanded / 255) - x);
+      q[p * 256 + v] = m >> 1;
+      unique[p * 256 + v] = f(du * du);
+      shared[p * 256 + v] = f(ds * ds);
     }
   }
+  return (PBIT_TABLES[compBits] = { q, unique, shared });
 }
 
 // Solid colours: for each 8-bit value, the BC7 endpoints whose interpolation at
@@ -350,146 +365,178 @@ function solidTables() {
   }
 }
 
-
-/** A block's bits, written LSB first. */
-class BitWriter {
-  constructor(out, at) { this.out = out; this.at = at; this.bit = 0; out.fill(0, at, at + 16); }
-  /** At most 8 bits: into the byte it starts in and the one after. */
-  put(value, bits) {
-    const i = this.at + (this.bit >> 3), shift = this.bit & 7;
-    this.out[i] |= (value << shift) & 255;
-    if (shift + bits > 8) this.out[i + 1] |= value >> (8 - shift);
-    this.bit += bits;
-  }
+// A block's bits, written LSB first into four 32-bit words, then stored as
+// its 16 bytes: module state rather than an object a block, since this runs
+// for every block of a texture.
+const ACC = new Int32Array(5);
+let BIT = 0;
+function begin() { ACC[0] = ACC[1] = ACC[2] = ACC[3] = 0; BIT = 0; }
+/** At most 8 bits. */
+function put(value, bits) {
+  const w = BIT >> 5, s = BIT & 31;
+  ACC[w] |= value << s;
+  if (s + bits > 32) ACC[w + 1] |= value >>> (32 - s);
+  BIT += bits;
+}
+function store(out, at) {
+  for (let k = 0; k < 16; k++) out[at + k] = ACC[k >> 2] >>> ((k & 3) * 8);
 }
 
-/** An unpacked block's endpoints as RGBA per subset: [subset][lo|hi][r, g, b, a], 8-bit. */
+// What each UASTC mode and pattern becomes in BC7, worked out once: the BC7
+// pattern and subset count, which UASTC subset each BC7 subset takes its
+// endpoints from, each texel's BC7 subset, and each subset's anchor texel.
+const plan = (pattern, subsets, from) => {
+  const map = subsets === 1 ? new Uint8Array(16) : Uint8Array.from(subsets === 2 ? BC7_PARTITIONS2[pattern] : BC7_PARTITIONS3[pattern]);
+  const anchors = subsets === 1 ? [0] : subsets === 2 ? [0, BC7_ANCHOR2[pattern]] : [0, BC7_ANCHOR3A[pattern], BC7_ANCHOR3B[pattern]];
+  return { pattern, subsets, from: Uint8Array.from(from), map, anchors: Uint8Array.from(anchors), mask: anchors.reduce((m, t) => m | (1 << t), 0) };
+};
+const PLAN_ONE = plan(0, 1, [0]);
+const PLAN_MODE1 = plan(0, 2, [0, 0]);
+const PLANS2 = COMMON2.map(([p, invert]) => plan(p, 2, invert ? [1, 0] : [0, 1]));
+const PLANS3 = COMMON3.map(([p, perm]) => plan(p, 3, [0, 1, 2].map((b) => PERMS[perm].indexOf(b))));
+const PLANS7 = COMMON7.map(([p, k]) => plan(p, 3, [0, 1, 2].map((b) => threeToTwo(b, k))));
+function planOf(mode, pattern) {
+  if (mode === 1) return PLAN_MODE1;
+  if (SUBSETS[mode] === 1) return PLAN_ONE;
+  if (mode === 3) return PLANS3[pattern];
+  if (mode === 7) return PLANS7[pattern];
+  return PLANS2[pattern];
+}
+// Per UASTC mode: BC7's index bits, and the table taking UASTC's weights to them (null where they match).
+const BC7_BITS = BC7_MODE.map((bc7) => (bc7 === 6 ? 4 : bc7 === 1 ? 3 : 2));
+const BC7_CONV = BC7_MODE.map((bc7, mode) => (WEIGHT_BITS[mode] === BC7_BITS[mode] || bc7 === 5 || mode === SOLID
+  ? null : TO_BC7_WEIGHTS[`${WEIGHT_BITS[mode]}>${BC7_BITS[mode]}`]));
+
+// Scratch, a block at a time: RGBA endpoints per UASTC subset (subset * 8 + lo/hi * 4 + c),
+// the BC7 ones per BC7 subset, their p-bits (subset * 2 + lo/hi), and the weights.
+const ENDS = new Uint8Array(24), Q = new Uint8Array(24), PB = new Uint8Array(6), W = new Uint8Array(32);
+
+/** An unpacked block's endpoints as RGBA per subset into ENDS, 8-bit. */
 function rgbaEndpoints(block) {
   const mode = block.mode, comps = COMPS[mode], e = block.endpoints;
-  const out = [];
   for (let s = 0; s < SUBSETS[mode]; s++) {
-    const pair = [[0, 0, 0, 255], [0, 0, 0, 255]];
     for (let h = 0; h < 2; h++) {
-      const v = (c) => e[s * comps * 2 + c * 2 + h];
-      if (comps === 2) { pair[h][0] = pair[h][1] = pair[h][2] = v(0); pair[h][3] = v(1); }
-      else for (let c = 0; c < comps; c++) pair[h][c] = v(c);
+      const o = s * 8 + h * 4, base = s * comps * 2 + h;
+      if (comps === 2) { ENDS[o] = ENDS[o + 1] = ENDS[o + 2] = e[base]; ENDS[o + 3] = e[base + 2]; } else {
+        ENDS[o] = e[base]; ENDS[o + 1] = e[base + 2]; ENDS[o + 2] = e[base + 4];
+        ENDS[o + 3] = comps === 4 ? e[base + 6] : 255;
+      }
     }
-    out.push(pair);
   }
-  return out;
-}
-
-/** Swap subset s's endpoints and invert its weights where its anchor's top bit is set. */
-function fixAnchor(weights, subsetOfTexel, s, anchor, bits, ends, pbits) {
-  const max = (1 << bits) - 1;
-  if (weights[anchor] <= max >> 1) return;
-  [ends[s][0], ends[s][1]] = [ends[s][1], ends[s][0]];
-  if (pbits) [pbits[s][0], pbits[s][1]] = [pbits[s][1], pbits[s][0]];
-  for (let t = 0; t < 16; t++) if (subsetOfTexel[t] === s) weights[t] = max - weights[t];
-}
-
-/** Indices, each anchor texel's a bit short. */
-function putIndices(w, weights, bits, anchors) {
-  for (let t = 0; t < 16; t++) w.put(weights[t], bits - (anchors.includes(t) ? 1 : 0));
 }
 
 /** One unpacked UASTC block as a BC7 block, into out at `at`. */
 export function encodeBC7(block, out, at) {
-  const w = new BitWriter(out, at);
+  begin();
+  bc7Block(block);
+  store(out, at);
+}
+
+function bc7Block(block) {
   const mode = block.mode;
   if (mode === SOLID) {
     solidTables();
-    const [r, g, b, a] = block.solid;
+    const s = block.solid, r = s[0], g = s[1], b = s[2], a = s[3];
     const err0 = SOLID6[0][r].error + SOLID6[0][g].error + SOLID6[0][b].error + SOLID6[0][a].error;
     const err1 = SOLID6[1][r].error + SOLID6[1][g].error + SOLID6[1][b].error + SOLID6[1][a].error;
     if (err0 > 0 && err1 > 0) {
-      w.put(1 << 5, 6); w.put(0, 2);
-      for (const c of [r, g, b]) { w.put(SOLID5[c].lo, 7); w.put(SOLID5[c].hi, 7); }
-      w.put(a, 8); w.put(a, 8);
-      putIndices(w, new Array(16).fill(1), 2, [0]);
-      putIndices(w, new Array(16).fill(0), 2, [0]);
+      put(1 << 5, 6); put(0, 2);
+      put(SOLID5[r].lo, 7); put(SOLID5[r].hi, 7); put(SOLID5[g].lo, 7); put(SOLID5[g].hi, 7); put(SOLID5[b].lo, 7); put(SOLID5[b].hi, 7);
+      put(a, 8); put(a, 8);
+      // Colour indices all 1, the anchor's a bit short; alpha's all 0, as cleared.
+      put(1, 1);
+      for (let t = 1; t < 16; t++) put(1, 2);
     } else {
-      const p = err1 < err0 ? 1 : 0;
-      w.put(1 << 6, 7);
-      for (const c of [r, g, b, a]) { w.put(SOLID6[p][c].lo, 7); w.put(SOLID6[p][c].hi, 7); }
-      w.put(p, 1); w.put(p, 1);
-      putIndices(w, new Array(16).fill(5), 4, [0]);
+      const p = err1 < err0 ? 1 : 0, solid = SOLID6[p];
+      put(1 << 6, 7);
+      put(solid[r].lo, 7); put(solid[r].hi, 7); put(solid[g].lo, 7); put(solid[g].hi, 7);
+      put(solid[b].lo, 7); put(solid[b].hi, 7); put(solid[a].lo, 7); put(solid[a].hi, 7);
+      put(p, 1); put(p, 1);
+      put(5, 3);
+      for (let t = 1; t < 16; t++) put(5, 4);
     }
     return;
   }
 
-  const bc7 = BC7_MODE[mode], ends = rgbaEndpoints(block), planes = PLANES[mode];
-  const raw = block.weights;
-  const xl = new Array(4), xh = new Array(4);
-  const norm = (pair) => { for (let c = 0; c < 4; c++) { xl[c] = f(pair[0][c] / 255); xh[c] = f(pair[1][c] / 255); } };
+  rgbaEndpoints(block);
+  const bc7 = BC7_MODE[mode], raw = block.weights;
 
   if (bc7 === 5) {
-    // Dual plane: the separately weighted component swapped into alpha (BC7's rotation).
-    const sel = block.selector, rotation = (sel + 1) & 3;
-    const [lo, hi] = ends[0];
-    if (sel < 3) { [lo[sel], lo[3]] = [lo[3], lo[sel]]; [hi[sel], hi[3]] = [hi[3], hi[sel]]; }
-    const conv = mode === 13 ? TO_BC7_WEIGHTS['1>2'] : null;
-    const cw = new Array(16), aw = new Array(16);
-    for (let t = 0; t < 16; t++) {
-      cw[t] = conv ? conv[raw[t * 2]] : raw[t * 2];
-      aw[t] = conv ? conv[raw[t * 2 + 1]] : raw[t * 2 + 1];
+    // Dual plane: the separately weighted component swapped into alpha (BC7's
+    // rotation). Colour to 7 bits, alpha kept at 8, each pair swapped and its
+    // indices inverted where its anchor's top bit is set.
+    const sel = block.selector;
+    if (sel < 3) {
+      let v = ENDS[sel]; ENDS[sel] = ENDS[3]; ENDS[3] = v;
+      v = ENDS[4 + sel]; ENDS[4 + sel] = ENDS[7]; ENDS[7] = v;
     }
-    const colour = [[lo.slice(0, 3), hi.slice(0, 3)]], alpha = [[[lo[3]], [hi[3]]]];
-    const all = new Array(16).fill(0);
-    fixAnchor(cw, all, 0, 0, 2, colour);
-    fixAnchor(aw, all, 0, 0, 2, alpha);
-    w.put(1 << 5, 6); w.put(rotation, 2);
-    for (let c = 0; c < 3; c++) for (let h = 0; h < 2; h++) w.put(Math.floor((colour[0][h][c] * 127 + 127) / 255), 7);
-    w.put(alpha[0][0][0], 8); w.put(alpha[0][1][0], 8);
-    putIndices(w, cw, 2, [0]);
-    putIndices(w, aw, 2, [0]);
+    const conv = mode === 13 ? TO_BC7_WEIGHTS['1>2'] : null;
+    for (let t = 0; t < 32; t++) W[t] = conv ? conv[raw[t]] : raw[t];
+    const flipColour = W[0] > 1, flipAlpha = W[1] > 1;
+    put(1 << 5, 6); put((sel + 1) & 3, 2);
+    for (let c = 0; c < 3; c++) {
+      const lo = Math.floor((ENDS[c] * 127 + 127) / 255), hi = Math.floor((ENDS[4 + c] * 127 + 127) / 255);
+      if (flipColour) { put(hi, 7); put(lo, 7); } else { put(lo, 7); put(hi, 7); }
+    }
+    if (flipAlpha) { put(ENDS[7], 8); put(ENDS[3], 8); } else { put(ENDS[3], 8); put(ENDS[7], 8); }
+    put(flipColour ? 3 - W[0] : W[0], 1);
+    for (let t = 1; t < 16; t++) put(flipColour ? 3 - W[t * 2] : W[t * 2], 2);
+    put(flipAlpha ? 3 - W[1] : W[1], 1);
+    for (let t = 1; t < 16; t++) put(flipAlpha ? 3 - W[t * 2 + 1] : W[t * 2 + 1], 2);
     return;
   }
 
-  // The BC7 pattern and, per BC7 subset, which UASTC subset's endpoints it takes.
-  let pattern = 0, subsets = 1, fromUastc = [0];
-  if (mode === 1) { pattern = 0; subsets = 2; fromUastc = [0, 0]; }
-  else if (SUBSETS[mode] === 2 && mode !== 7) {
-    const [p, invert] = COMMON2[block.pattern];
-    pattern = p; subsets = 2; fromUastc = invert ? [1, 0] : [0, 1];
-  } else if (mode === 3) {
-    const [p, perm] = COMMON3[block.pattern];
-    pattern = p; subsets = 3; fromUastc = [0, 1, 2].map((b) => PERMS[perm].indexOf(b));
-  } else if (mode === 7) {
-    const [p, k] = COMMON7[block.pattern];
-    pattern = p; subsets = 3; fromUastc = [0, 1, 2].map((b) => threeToTwo(b, k));
-  }
-  const map = subsets === 1 ? new Array(16).fill(0) : subsets === 2 ? BC7_PARTITIONS2[pattern] : BC7_PARTITIONS3[pattern];
-  const anchors = subsets === 1 ? [0] : subsets === 2 ? [0, BC7_ANCHOR2[pattern]] : [0, BC7_ANCHOR3A[pattern], BC7_ANCHOR3B[pattern]];
-
-  // Weights, in BC7's index bits.
-  const bits = bc7 === 6 ? 4 : bc7 === 1 ? 3 : 2;
-  const conv = WEIGHT_BITS[mode] === bits ? null : TO_BC7_WEIGHTS[`${WEIGHT_BITS[mode]}>${bits}`];
-  const weights = new Array(16);
-  for (let t = 0; t < 16; t++) weights[t] = conv ? conv[raw[t]] : raw[t];
+  const { pattern, subsets, from, map, anchors, mask } = planOf(mode, block.pattern);
+  const bits = BC7_BITS[mode], conv = BC7_CONV[mode], max = (1 << bits) - 1;
+  for (let t = 0; t < 16; t++) W[t] = conv ? conv[raw[t]] : raw[t];
 
   // Endpoints, quantized to the BC7 mode's bits (with p-bits where it has them).
-  const q = [], pb = [];
-  for (let s = 0; s < subsets; s++) {
-    const pair = ends[fromUastc[s]];
-    const lo = [0, 0, 0, 0], hi = [0, 0, 0, 0], p = [0, 0];
-    if (bc7 === 2) {
-      for (let c = 0; c < 3; c++) { lo[c] = Math.floor((pair[0][c] * 31 + 127) / 255); hi[c] = Math.floor((pair[1][c] * 31 + 127) / 255); }
-    } else {
-      norm(pair);
-      bestPbits(bc7 === 1, bc7 === 6 || bc7 === 7 ? 4 : 3, bc7 === 6 || bc7 === 3 ? 7 : bc7 === 1 ? 6 : 5, xl, xh, lo, hi, p);
+  const comps = bc7 === 6 || bc7 === 7 ? 4 : 3;
+  if (bc7 === 2) {
+    for (let s = 0; s < subsets; s++) {
+      const o = from[s] * 8;
+      for (let c = 0; c < 8; c++) Q[s * 8 + c] = Math.floor((ENDS[o + c] * 31 + 127) / 255);
     }
-    q.push([lo, hi]); pb.push(p);
+  } else {
+    const { q, unique, shared } = pbitTables(bc7 === 6 || bc7 === 3 ? 7 : bc7 === 1 ? 6 : 5);
+    for (let s = 0; s < subsets; s++) {
+      const o = from[s] * 8;
+      if (bc7 === 1) {
+        let e0 = 0, e1 = 0;
+        for (let c = 0; c < 3; c++) {
+          e0 = f(e0 + f(shared[ENDS[o + c]] + shared[ENDS[o + 4 + c]]));
+          e1 = f(e1 + f(shared[256 + ENDS[o + c]] + shared[256 + ENDS[o + 4 + c]]));
+        }
+        const p = e1 < e0 ? 1 : 0;
+        PB[s * 2] = PB[s * 2 + 1] = p;
+        for (let c = 0; c < 8; c++) Q[s * 8 + c] = q[p * 256 + ENDS[o + c]];
+      } else {
+        for (let h = 0; h < 2; h++) {
+          const e = o + h * 4;
+          let e0 = 0, e1 = 0;
+          for (let c = 0; c < comps; c++) { e0 = f(e0 + unique[ENDS[e + c]]); e1 = f(e1 + unique[256 + ENDS[e + c]]); }
+          const p = e1 < e0 ? 1 : 0;
+          PB[s * 2 + h] = p;
+          for (let c = 0; c < 4; c++) Q[s * 8 + h * 4 + c] = q[p * 256 + ENDS[e + c]];
+        }
+      }
+    }
   }
-  for (let s = 0; s < subsets; s++) fixAnchor(weights, map, s, anchors[s], bits, q, bc7 === 2 ? null : pb);
+  // Where a subset's anchor index has its top bit set: its endpoints swapped, its indices inverted.
+  for (let s = 0; s < subsets; s++) {
+    if (W[anchors[s]] <= max >> 1) continue;
+    for (let c = 0; c < 4; c++) { const v = Q[s * 8 + c]; Q[s * 8 + c] = Q[s * 8 + 4 + c]; Q[s * 8 + 4 + c] = v; }
+    const p = PB[s * 2]; PB[s * 2] = PB[s * 2 + 1]; PB[s * 2 + 1] = p;
+    for (let t = 0; t < 16; t++) if (map[t] === s) W[t] = max - W[t];
+  }
 
-  w.put(1 << bc7, bc7 + 1);
-  if (subsets > 1) w.put(pattern, bc7 === 0 ? 4 : 6);
-  const comps = bc7 === 6 || bc7 === 7 ? 4 : 3, cbits = bc7 === 2 || bc7 === 7 ? 5 : bc7 === 1 ? 6 : 7;
-  for (let c = 0; c < comps; c++) for (let s = 0; s < subsets; s++) { w.put(q[s][0][c], cbits); w.put(q[s][1][c], cbits); }
-  if (bc7 === 1) for (let s = 0; s < subsets; s++) w.put(pb[s][0], 1);
-  else if (bc7 !== 2) for (let s = 0; s < subsets; s++) { w.put(pb[s][0], 1); w.put(pb[s][1], 1); }
-  putIndices(w, weights, bits, anchors);
+  put(1 << bc7, bc7 + 1);
+  if (subsets > 1) put(pattern, bc7 === 0 ? 4 : 6);
+  const cbits = bc7 === 2 || bc7 === 7 ? 5 : bc7 === 1 ? 6 : 7;
+  for (let c = 0; c < comps; c++) for (let s = 0; s < subsets; s++) { put(Q[s * 8 + c], cbits); put(Q[s * 8 + 4 + c], cbits); }
+  if (bc7 === 1) for (let s = 0; s < subsets; s++) put(PB[s * 2], 1);
+  else if (bc7 !== 2) for (let s = 0; s < subsets; s++) { put(PB[s * 2], 1); put(PB[s * 2 + 1], 1); }
+  for (let t = 0; t < 16; t++) put(W[t], bits - ((mask >> t) & 1));
 }
 
 /** A UASTC level as BC7 blocks: the same 16 bytes a 4x4 block. */
@@ -500,7 +547,7 @@ export function uastcToBC7(data, width, height) {
 function transcodeLevel(data, width, height, encode) {
   const blocks = Math.ceil(width / 4) * Math.ceil(height / 4);
   if (data.length < blocks * 16) throw new Error(`uastc: ${data.length} bytes for ${blocks} blocks`);
-  const out = new Uint8Array(blocks * 16), block = {};
+  const out = new Uint8Array(blocks * 16), block = newBlock();
   for (let b = 0; b < blocks; b++) encode(unpackBlock(data, b * 16, block), out, b * 16);
   return out;
 }
@@ -565,36 +612,44 @@ function iseTables() {
 const TRIT_SPLIT = [2, 2, 1, 2, 1], QUINT_SPLIT = [3, 2, 2];
 
 /** `values` BISE integers in `range`, ASTC's interleaved way, from the writer's bit on. */
-function putISE(w, values, count, range) {
-  const [bits, trits, quints] = RANGES[range];
+function putISE(values, count, range) {
+  const bits = RANGE_BITS[range], trits = RANGE_TRITS[range], quints = RANGE_QUINTS[range];
   const mask = (1 << bits) - 1;
-  if (!trits && !quints) { for (let i = 0; i < count; i++) w.put(values[i], bits); return; }
+  if (!trits && !quints) { for (let i = 0; i < count; i++) put(values[i], bits); return; }
   const per = trits ? 5 : 3, base = trits ? 3 : 5, split = trits ? TRIT_SPLIT : QUINT_SPLIT, codes = trits ? TRIT_CODES : QUINT_CODES;
-  const end = w.bit + count * bits + Math.ceil(count * (trits ? 8 : 7) / per);
+  const end = BIT + count * bits + Math.ceil(count * (trits ? 8 : 7) / per);
   for (let g = 0; g < count; g += per) {
     let digits = 0;
     for (let i = Math.min(per, count - g) - 1; i >= 0; i--) digits = digits * base + (values[g + i] >> bits);
     let packed = codes[digits];
-    for (let i = 0; i < per && w.bit < end; i++) {
-      if (g + i < count) w.put(values[g + i] & mask, bits);
-      const n = Math.min(split[i], end - w.bit);
-      w.put(packed & ((1 << n) - 1), n);
+    for (let i = 0; i < per && BIT < end; i++) {
+      if (g + i < count) put(values[g + i] & mask, bits);
+      const n = Math.min(split[i], end - BIT);
+      put(packed & ((1 << n) - 1), n);
       packed >>= split[i];
     }
   }
 }
 
-const ASTC_RAW = new Uint8Array(24), ASTC_WEIGHTS = new Uint8Array(32);
+const ASTC_RAW = new Uint8Array(24), ASTC_WEIGHTS = new Uint8Array(32), WEIGHT_STREAM = new Uint8Array(11);
+/** Each byte with its bits in reverse order. */
+const REVERSED = new Uint8Array(256);
+for (let v = 0; v < 256; v++) for (let b = 0; b < 8; b++) REVERSED[v] |= ((v >> b) & 1) << (7 - b);
 
 /** One unpacked UASTC block as an ASTC 4x4 block, into out at `at`. */
 export function encodeASTC(block, out, at) {
-  const w = new BitWriter(out, at);
+  begin();
+  astcBlock(block);
+  store(out, at);
+}
+
+function astcBlock(block) {
   const mode = block.mode;
   if (mode === SOLID) {
     // A void-extent block: LDR, its extent all ones (none), the colour as UNORM16.
-    w.put(0xfc, 8); w.put(0xfd, 8);
-    for (let i = 2; i < 8; i++) w.put(0xff, 8);
-    for (const c of block.solid) { w.put(c, 8); w.put(c, 8); }
+    put(0xfc, 8); put(0xfd, 8);
+    for (let i = 2; i < 8; i++) put(0xff, 8);
+    for (const c of block.solid) { put(c, 8); put(c, 8); }
     return;
   }
   iseTables();
@@ -605,34 +660,42 @@ export function encodeASTC(block, out, at) {
   weights.set(block.weights);
   if (comps >= 3) {
     const max = (1 << wbits) - 1;
+    const map = subsets === 1 ? null : mode === 3 ? PATTERNS3[block.pattern] : mode === 7 ? PATTERNS7[block.pattern] : PATTERNS2[block.pattern];
     for (let s = 0; s < subsets; s++) {
       const o = s * comps * 2;
       if (e[o] + e[o + 2] + e[o + 4] <= e[o + 1] + e[o + 3] + e[o + 5]) continue;
       for (let c = 0; c < comps; c++) { const lo = raw[o + c * 2]; raw[o + c * 2] = raw[o + c * 2 + 1]; raw[o + c * 2 + 1] = lo; }
       for (let t = 0; t < 16; t++) {
-        if (subsetOf(mode, block.pattern, t) !== s) continue;
+        if (map !== null && map[t] !== s) continue;
         for (let p = 0; p < planes; p++) weights[t * planes + p] = max - weights[t * planes + p];
       }
     }
   }
   const blockMode = BLOCK_MODE[wbits] | (planes === 2 ? 0x400 : 0);
-  w.put(blockMode & 255, 8);
-  w.put(blockMode >> 8, 3);
-  w.put(subsets - 1, 2);
-  if (subsets === 1) w.put(CEM[comps], 4);
+  put(blockMode & 255, 8);
+  put(blockMode >> 8, 3);
+  put(subsets - 1, 2);
+  if (subsets === 1) put(CEM[comps], 4);
   else {
     const seed = (mode === 3 ? SEEDS3 : mode === 7 ? SEEDS7 : SEEDS2)[block.pattern];
-    w.put(seed & 255, 8);
-    w.put(seed >> 8, 2);
-    w.put(CEM[comps] << 2, 6); // every subset the same mode
+    put(seed & 255, 8);
+    put(seed >> 8, 2);
+    put(CEM[comps] << 2, 6); // every subset the same mode
   }
-  putISE(w, raw, comps * 2 * subsets, ENDPOINT_RANGE[mode]);
+  putISE(raw, comps * 2 * subsets, ENDPOINT_RANGE[mode]);
   const weightBits = 16 * planes * wbits;
-  if (planes === 2) { w.bit = 126 - weightBits; w.put(block.selector, 2); }
-  // The weights from the block's top bit down, each one's bits reversed with it.
-  for (let i = 0, bit = 127; i < 16 * planes; i++) {
-    for (let b = 0; b < wbits; b++, bit--) if ((weights[i] >> b) & 1) out[at + (bit >> 3)] |= 1 << (bit & 7);
+  if (planes === 2) { BIT = 126 - weightBits; put(block.selector, 2); }
+  // The weights from the block's top bit down, each one's bits reversed with
+  // it: packed forwards, LSB first, then each byte reversed into the block from its end.
+  const stream = WEIGHT_STREAM;
+  let acc = 0, held = 0, k = 0;
+  for (let i = 0; i < 16 * planes; i++) {
+    acc |= weights[i] << held;
+    held += wbits;
+    while (held >= 8) { stream[k++] = acc & 255; acc >>>= 8; held -= 8; }
   }
+  if (held > 0) stream[k++] = acc;
+  for (let i = 0; i < k; i++) ACC[(15 - i) >> 2] |= REVERSED[stream[i]] << (((15 - i) & 3) * 8);
 }
 
 /** A UASTC level as ASTC 4x4 blocks: the same 16 bytes a 4x4 block, nothing lost. */

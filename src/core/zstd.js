@@ -92,6 +92,45 @@ class BackwardBits {
   get done() { return this.left === 0; }
 }
 
+/**
+ * Bits [top - n, top) of a backward stream starting at `start`, n at most 24:
+ * BackwardBits._bits as a plain function, for the sequence loop, which keeps
+ * its place in a local rather than an object it reads back on every field.
+ */
+function backBits(bytes, start, top, n) {
+  const lo = top - n;
+  if (lo < 0) return top <= 0 ? 0 : backBits(bytes, start, top, top) * (1 << -lo);
+  const b = start + (lo >> 3);
+  return (((bytes[b] | (bytes[b + 1] << 8) | (bytes[b + 2] << 16) | (bytes[b + 3] << 24)) >>> (lo & 7)) & ((1 << n) - 1));
+}
+
+// Whether 32-bit words of a buffer read as its bytes do, least significant first.
+const LITTLE_ENDIAN = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
+
+/**
+ * The input's whole buffer as 32-bit words, for reading a field in one or two
+ * loads, or null where it cannot be (a big-endian machine, a buffer past 2^28
+ * bytes, whose bit positions would not fit an int).
+ */
+function wordsOf(bytes) {
+  const size = bytes.buffer.byteLength;
+  return LITTLE_ENDIAN && size < 2 ** 28 ? new Int32Array(bytes.buffer, 0, size >> 2) : null;
+}
+
+/**
+ * backBits through the buffer's words: `bitBase` is where the stream starts in
+ * the buffer, in bits. Short of n bits, or with no words, the byte path.
+ */
+function seqRead(bytes, words, bitBase, start, top, n) {
+  if (words === null || top < n) return backBits(bytes, start, top, n);
+  const lo = bitBase + top - n, w = lo >> 5, sh = lo & 31;
+  // The buffer's last bytes, past its last whole word, are not in the view.
+  if (w + 1 >= words.length) return backBits(bytes, start, top, n);
+  let v = words[w] >>> sh;
+  if (sh + n > 32) v |= words[w + 1] << (32 - sh);
+  return v & ((1 << n) - 1);
+}
+
 /** An FSE decoding table from a distribution: per state its symbol, bits to read, and the baseline they add to. */
 function fseTable(probs, accuracy) {
   const size = 1 << accuracy;
@@ -340,16 +379,28 @@ class Frame {
     const of = this.tables.of = pick((modes >> 4) & 3, 'of', 31, 8);
     const ml = this.tables.ml = pick((modes >> 2) & 3, 'ml', 52, 9);
 
-    const r = new BackwardBits(bytes, p, end);
-    let sll = r.read(ll.accuracy), sof = r.read(of.accuracy), sml = r.read(ml.accuracy);
+    const start = p, words = wordsOf(bytes), bitBase = (bytes.byteOffset + start) * 8;
+    let left = new BackwardBits(bytes, p, end).left;
+    let sll = seqRead(bytes, words, bitBase, start, left, ll.accuracy); left -= ll.accuracy;
+    let sof = seqRead(bytes, words, bitBase, start, left, of.accuracy); left -= of.accuracy;
+    let sml = seqRead(bytes, words, bitBase, start, left, ml.accuracy); left -= ml.accuracy;
+    const llSymbol = ll.symbol, llBits = ll.bits, llBase = ll.base;
+    const mlSymbol = ml.symbol, mlBits = ml.bits, mlBase = ml.base;
+    const ofSymbol = of.symbol, ofBits = of.bits, ofBase = of.base;
     const rep = this.repeat;
     let lit = 0;
     for (let i = 0; i < count; i++) {
-      const ofCode = of.symbol[sof], mlCode = ml.symbol[sml], llCode = ll.symbol[sll];
+      const ofCode = ofSymbol[sof], mlCode = mlSymbol[sml], llCode = llSymbol[sll];
       if (ofCode > 31) fail('an offset code past 31');
-      const ofValue = 2 ** ofCode + r.read(ofCode);
-      const matchLength = ML_BASE[mlCode] + r.read(ML_BITS[mlCode]);
-      const literalLength = LL_BASE[llCode] + r.read(LL_BITS[llCode]);
+      // An offset's extra bits can be 31, more than one window holds.
+      let ofValue;
+      if (ofCode <= 24) ofValue = (1 << ofCode) + seqRead(bytes, words, bitBase, start, left, ofCode);
+      else ofValue = 2 ** ofCode + seqRead(bytes, words, bitBase, start, left, ofCode - 16) * 65536 + seqRead(bytes, words, bitBase, start, left - (ofCode - 16), 16);
+      left -= ofCode;
+      const mlExtra = ML_BITS[mlCode], matchLength = ML_BASE[mlCode] + seqRead(bytes, words, bitBase, start, left, mlExtra);
+      left -= mlExtra;
+      const llExtra = LL_BITS[llCode], literalLength = LL_BASE[llCode] + seqRead(bytes, words, bitBase, start, left, llExtra);
+      left -= llExtra;
       let offset;
       if (ofValue > 3) {
         offset = ofValue - 3;
@@ -362,9 +413,9 @@ class Frame {
         else { offset = rep[0] - 1; rep[2] = rep[1]; rep[1] = rep[0]; rep[0] = offset; }
       }
       if (i < count - 1) {
-        sll = ll.base[sll] + r.read(ll.bits[sll]);
-        sml = ml.base[sml] + r.read(ml.bits[sml]);
-        sof = of.base[sof] + r.read(of.bits[sof]);
+        let n = llBits[sll]; sll = llBase[sll] + seqRead(bytes, words, bitBase, start, left, n); left -= n;
+        n = mlBits[sml]; sml = mlBase[sml] + seqRead(bytes, words, bitBase, start, left, n); left -= n;
+        n = ofBits[sof]; sof = ofBase[sof] + seqRead(bytes, words, bitBase, start, left, n); left -= n;
       }
       // The literals, then the match.
       if (lit + literalLength > literals.length) fail('a sequence past its literals');
@@ -377,7 +428,7 @@ class Frame {
       else for (let k = 0; k < matchLength; k++) out[o + k] = out[o + k - offset];
       o += matchLength;
     }
-    if (!r.done) fail('sequences that do not end where their block does');
+    if (left !== 0) fail('sequences that do not end where their block does');
     out.set(literals.subarray(lit), o);
     return o + literals.length - lit;
   }
