@@ -60,7 +60,11 @@ const uastcLevels = (w, h) => {
 
 console.log('\nktx2');
 
-test('UASTC under zstd: the levels unpacked, largest first, with what the descriptor says', () => {
+// Node's zstd compressor came in 22.15 and 23.8: older ones skip the zstd file.
+const ZSTD = typeof zlib.zstdCompressSync === 'function';
+if (!ZSTD) console.log(`  --  skipped: a zstd-packed file (this Node, ${process.version}, has no zlib.zstdCompressSync)`);
+
+if (ZSTD) test('UASTC under zstd: the levels unpacked, largest first, with what the descriptor says', () => {
   const levels = uastcLevels(64, 32);
   const t = readKTX2(ktx2({ width: 64, height: 32, levels, scheme: KTX2_ZSTD }));
   assert.equal(t.basis, 'uastc');
@@ -122,7 +126,7 @@ const solidLevels = (w, h, count) => Array.from({ length: count }, (_, l) => {
 
 test('transcoding a file gives each level in the format asked, as the block transcoders write it', () => {
   const levels = solidLevels(16, 8, 5);
-  const file = ktx2({ width: 16, height: 8, levels, scheme: KTX2_ZSTD });
+  const file = ktx2({ width: 16, height: 8, levels, scheme: ZSTD ? KTX2_ZSTD : KTX2_NONE });
   for (const [target, transcode] of [['astc', uastcToASTC], ['bc7', uastcToBC7], ['rgba', uastcToRGBA]]) {
     const image = transcodeKTX2(file, target);
     assert.deepEqual([image.width, image.height, image.target], [16, 8, target]);
@@ -136,7 +140,7 @@ test('transcoding a file gives each level in the format asked, as the block tran
 
 test('for the GPU, a file bound for ASTC or BC7 comes back as its UASTC levels, only unpacked', () => {
   const levels = solidLevels(16, 8, 5);
-  const image = transcodeKTX2(ktx2({ width: 16, height: 8, levels, scheme: KTX2_ZSTD }), 'bc7', { gpu: true });
+  const image = transcodeKTX2(ktx2({ width: 16, height: 8, levels, scheme: ZSTD ? KTX2_ZSTD : KTX2_NONE }), 'bc7', { gpu: true });
   assert.deepEqual([image.target, image.uastc], ['bc7', true]);
   assert.deepEqual(image.levels.map((l) => l.data), levels);
   // One level still comes as RGBA8, transcoded here.

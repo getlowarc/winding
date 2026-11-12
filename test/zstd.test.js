@@ -14,6 +14,15 @@ import { zstdDecompress } from '../src/core/zstd.js';
 let passed = 0;
 function test(name, fn) { fn(); passed++; console.log(`  ok  ${name}`); }
 
+// Node's zstd compressor came in 22.15 and 23.8; without one there is nothing to check against.
+if (typeof zlib.zstdCompressSync !== 'function') {
+  console.log(`
+zstd
+  --  skipped: this Node (${process.version}) has no zlib.zstdCompressSync to compress with
+`);
+  process.exit(0);
+}
+
 let seed = 7;
 const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
