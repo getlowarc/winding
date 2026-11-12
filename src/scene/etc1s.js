@@ -384,6 +384,32 @@ export function equals1() {
   return EQUALS_1;
 }
 
+/**
+ * Per mapping, by endpoint value: the error of the selectors it maps to the
+ * low end (colour 0, which depends on lo alone) and to the high end (colour
+ * 3, hi alone). Their sum is at most a pair's whole error, so a pair whose
+ * sum is already no better than a mapping's best can be passed over without
+ * changing which pair the search keeps.
+ */
+function bounds(block, low, high, scale, count, expand) {
+  const byLo = new Float64Array(10 * count), byHi = new Float64Array(10 * count);
+  for (let m = 0; m < 10; m++) {
+    const map = MAPPINGS[m];
+    for (let v = 0; v < count; v++) {
+      const c = expand(v);
+      let lo = 0, hi = 0;
+      for (let s = low; s <= high; s++) {
+        const d = block[s] - c;
+        if (map[s] === 0) lo += d * d * scale[s];
+        else if (map[s] === 3) hi += d * d * scale[s];
+      }
+      byLo[m * count + v] = lo;
+      byHi[m * count + v] = hi;
+    }
+  }
+  return [byLo, byHi];
+}
+
 /** The colour table's ten mappings for (intensity, 5-bit value, selector range): lo, hi, err each. */
 const COLOUR_TABLE = new Array(1536);
 export function colourSolutions(inten, g, range) {
@@ -394,27 +420,29 @@ export function colourSolutions(inten, g, range) {
   const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
   const block = table.map((m) => clamp255(base + m));
   const heavy = inten === 7 && low === 0 && high === 3;
-  const colours = [0, 0, 0, 0];
-  for (let m = 0; m < 10; m++) {
-    const map = MAPPINGS[m];
-    let bestLo = 0, bestHi = 0, best = Infinity;
-    for (let hi = 0; hi < 128; hi++) {
-      const c3 = (hi << 1) | (hi >> 6);
-      for (let lo = 0; lo < 128; lo++) {
-        const c0 = (lo << 1) | (lo >> 6);
-        colours[0] = c0; colours[3] = c3;
-        colours[1] = (c0 * 43 + c3 * 21 + 32) >> 6;
-        colours[2] = (c0 * 21 + c3 * 43 + 32) >> 6;
+  // Every (hi, lo) pair once, every mapping scored on it: each mapping still
+  // meets the pairs in Basis's order, hi outer, keeping the first best.
+  const best = new Float64Array(10).fill(Infinity), colours = [0, 0, 0, 0], scale = [1, 1, 1, 1];
+  if (heavy) scale[0] = scale[3] = 5;
+  const [byLo, byHi] = bounds(block, low, high, scale, 128, (v) => (v << 1) | (v >> 6));
+  for (let hi = 0; hi < 128; hi++) {
+    const c3 = (hi << 1) | (hi >> 6);
+    for (let lo = 0; lo < 128; lo++) {
+      const c0 = (lo << 1) | (lo >> 6);
+      colours[0] = c0; colours[3] = c3;
+      colours[1] = (c0 * 43 + c3 * 21 + 32) >> 6;
+      colours[2] = (c0 * 21 + c3 * 43 + 32) >> 6;
+      for (let m = 0; m < 10; m++) {
+        // What the selectors on the ends alone cost: at least that, so no better.
+        if (byLo[m * 128 + lo] + byHi[m * 128 + hi] >= best[m]) continue;
+        const map = MAPPINGS[m];
         let err = 0;
-        for (let s = low; s <= high; s++) {
-          const d = block[s] - colours[map[s]];
-          err += d * d * (heavy && (s === 0 || s === 3) ? 5 : 1);
-        }
-        if (err < best) { best = err; bestLo = lo; bestHi = hi; }
+        for (let s = low; s <= high; s++) { const d = block[s] - colours[map[s]]; err += d * d * scale[s]; }
+        if (err < best[m]) { best[m] = err; solutions[m * 3] = lo; solutions[m * 3 + 1] = hi; }
       }
     }
-    solutions[m * 3] = bestLo; solutions[m * 3 + 1] = bestHi; solutions[m * 3 + 2] = Math.min(best, 0xffff);
   }
+  for (let m = 0; m < 10; m++) solutions[m * 3 + 2] = Math.min(best[m], 0xffff);
   COLOUR_TABLE[key] = solutions;
   return solutions;
 }
@@ -746,10 +774,12 @@ function chromaOf(global) {
   return (global.chroma = out);
 }
 
+/** (int)(.5f + clamp(v, 0, 255)): v is never negative there, so the truncation is a floor. */
+const round255 = (v) => Math.trunc(0.5 + (v < 0 ? 0 : v > 255 ? 255 : v));
+const Y4 = new Float64Array(4);
+
 function chromaFilter(global, endpointsOf, out, across, down) {
   const chroma = chromaOf(global);
-  const at = (x, y) => endpointsOf[Math.min(down - 1, Math.max(0, y)) * across + Math.min(across - 1, Math.max(0, x))] * 2;
-  const lerp = (p, q, s) => p + (q - p) * s;
   const px = new Uint8Array(48), yVals = new Float32Array(16);
   for (let by = 0; by < down; by++) {
     for (let bx = 0; bx < across; bx++) {
@@ -770,10 +800,10 @@ function chromaFilter(global, endpointsOf, out, across, down) {
       loadBlock(out, o);
       const lr = from7(getBits(7, 8)), hr = from7(getBits(7, 15)), lg = from7(getBits(7, 22));
       const hg = from7(getBits(7, 29)), lb = from7(getBits(7, 36)), hb = from7(getBits(7, 43));
-      const y4 = [0, 1, 2, 3].map((i) => interp2(lr, hr, i) * 0.25 + interp2(lg, hg, i) * 0.5 + interp2(lb, hb, i) * 0.25);
+      for (let i = 0; i < 4; i++) Y4[i] = interp2(lr, hr, i) * 0.25 + interp2(lg, hg, i) * 0.5 + interp2(lb, hb, i) * 0.25;
       let sum = 0, sumSq = 0, offset = 66;
       for (let i = 0; i < 16; i++) {
-        const n = i ? 2 : 1, y = y4[getBits(n, offset)];
+        const n = i ? 2 : 1, y = Y4[getBits(n, offset)];
         offset += n;
         yVals[i] = y;
         sum = f(sum + y);
@@ -783,14 +813,18 @@ function chromaFilter(global, endpointsOf, out, across, down) {
       if (f(f(sumSq * S) - f(scaled * scaled)) < 3) continue;
       for (let py = 0; py < 4; py++) {
         const uby = by + ((py - 2) >> 2), fy = (((py + 2) & 3) + 0.5) * 0.25;
+        // The rows of blocks the texel's corners are in, clamped to the slice.
+        const r0 = Math.min(down - 1, Math.max(0, uby)) * across, r1 = Math.min(down - 1, Math.max(0, uby + 1)) * across;
         for (let pxi = 0; pxi < 4; pxi++) {
           const ubx = bx + ((pxi - 2) >> 2), fx = (((pxi + 2) & 3) + 0.5) * 0.25;
-          const a = at(ubx, uby), b = at(ubx + 1, uby), c = at(ubx, uby + 1), d = at(ubx + 1, uby + 1);
-          const fco = lerp(lerp(chroma[a], chroma[b], fx), lerp(chroma[c], chroma[d], fx), fy);
-          const fcg = lerp(lerp(chroma[a + 1], chroma[b + 1], fx), lerp(chroma[c + 1], chroma[d + 1], fx), fy);
+          const c0 = Math.min(across - 1, Math.max(0, ubx)), c1 = Math.min(across - 1, Math.max(0, ubx + 1));
+          const a = endpointsOf[r0 + c0] * 2, b = endpointsOf[r0 + c1] * 2, c = endpointsOf[r1 + c0] * 2, d = endpointsOf[r1 + c1] * 2;
+          const top = chroma[a] + (chroma[b] - chroma[a]) * fx, bottom = chroma[c] + (chroma[d] - chroma[c]) * fx;
+          const fco = top + (bottom - top) * fy;
+          const topG = chroma[a + 1] + (chroma[b + 1] - chroma[a + 1]) * fx, bottomG = chroma[c + 1] + (chroma[d + 1] - chroma[c + 1]) * fx;
+          const fcg = topG + (bottomG - topG) * fy;
           const y = yVals[py * 4 + pxi], t = (py * 4 + pxi) * 3;
-          const clamp = (v) => Math.trunc(0.5 + (v < 0 ? 0 : v > 255 ? 255 : v));
-          px[t] = clamp(y + fco - fcg); px[t + 1] = clamp(y + fcg); px[t + 2] = clamp(y - fco - fcg);
+          px[t] = round255(y + fco - fcg); px[t + 1] = round255(y + fcg); px[t + 2] = round255(y - fco - fcg);
         }
       }
       encodeMode5(px);
@@ -867,7 +901,7 @@ function singleColour() {
 const ASTC_W2 = [0, 21, 43, 64];
 /** The [0, 47] table's ten mappings for (intensity, 5-bit value, selector range): lo, hi, err each. */
 const ASTC_TABLE = new Array(1536);
-function astcSolutions(inten, g, range) {
+export function astcSolutions(inten, g, range) {
   const key = (inten * 32 + g) * 6 + range;
   let solutions = ASTC_TABLE[key];
   if (solutions) return solutions;
@@ -875,25 +909,26 @@ function astcSolutions(inten, g, range) {
   const [low, high] = SELECTOR_RANGES[range], base = expand5(g), table = INTENSITY[inten];
   const block = table.map((m) => clamp255(base + m));
   const heavy = inten === 7 && low === 0 && high === 3;
-  const colours = [0, 0, 0, 0];
-  for (let m = 0; m < 10; m++) {
-    const map = MAPPINGS[m];
-    let bestLo = 0, bestHi = 0, best = Infinity;
-    for (let hi = 0; hi < 48; hi++) {
-      const c1 = UNQUANT_47[hi] | (UNQUANT_47[hi] << 8);
-      for (let lo = 0; lo < 48; lo++) {
-        const c0 = UNQUANT_47[lo] | (UNQUANT_47[lo] << 8);
-        for (let s = 0; s < 4; s++) colours[s] = Math.floor((c0 * (64 - ASTC_W2[s]) + c1 * ASTC_W2[s] + 32) / 64) >> 8;
+  // As colourSolutions: every pair once, every mapping scored on it, in Basis's order.
+  const best = new Float64Array(10).fill(Infinity), colours = [0, 0, 0, 0], scale = [1, 1, 1, 1];
+  if (heavy) scale[0] = scale[3] = 8;
+  // Weight 0 and 64 give the endpoints' own unquantized values: the same bounds as BC7's.
+  const [byLo, byHi] = bounds(block, low, high, scale, 48, (v) => UNQUANT_47[v]);
+  for (let hi = 0; hi < 48; hi++) {
+    const c1 = UNQUANT_47[hi] | (UNQUANT_47[hi] << 8);
+    for (let lo = 0; lo < 48; lo++) {
+      const c0 = UNQUANT_47[lo] | (UNQUANT_47[lo] << 8);
+      for (let s = 0; s < 4; s++) colours[s] = Math.floor((c0 * (64 - ASTC_W2[s]) + c1 * ASTC_W2[s] + 32) / 64) >> 8;
+      for (let m = 0; m < 10; m++) {
+        if (byLo[m * 48 + lo] + byHi[m * 48 + hi] >= best[m]) continue;
+        const map = MAPPINGS[m];
         let err = 0;
-        for (let s = low; s <= high; s++) {
-          const d = block[s] - colours[map[s]];
-          err += d * d * (heavy && (s === 0 || s === 3) ? 8 : 1);
-        }
-        if (err < best) { best = err; bestLo = lo; bestHi = hi; }
+        for (let s = low; s <= high; s++) { const d = block[s] - colours[map[s]]; err += d * d * scale[s]; }
+        if (err < best[m]) { best[m] = err; solutions[m * 3] = lo; solutions[m * 3 + 1] = hi; }
       }
     }
-    solutions[m * 3] = bestLo; solutions[m * 3 + 1] = bestHi; solutions[m * 3 + 2] = Math.min(best, 0xffff);
   }
+  for (let m = 0; m < 10; m++) solutions[m * 3 + 2] = Math.min(best[m], 0xffff);
   ASTC_TABLE[key] = solutions;
   return solutions;
 }
