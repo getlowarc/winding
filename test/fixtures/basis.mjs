@@ -31,9 +31,10 @@ export async function loadBasis() {
 /**
  * A w x h RGBA image as a UASTC LDR 4x4 KTX2 file, zstd-supercompressed,
  * with mips unless `mips` is false. `rdo` trades quality for size as Basis's
- * own option does; `srgb` sets the transfer function.
+ * own option does; `srgb` sets the transfer function; `level` is its UASTC
+ * effort, 0 (fastest) to 4 (slowest), which changes which modes it tries.
  */
-export function encodeUASTC(B, rgba, w, h, { srgb = true, mips = true, rdo = false } = {}) {
+export function encodeUASTC(B, rgba, w, h, { srgb = true, mips = true, rdo = false, level = 2 } = {}) {
   const e = new B.BasisEncoder();
   try {
     e.setSliceSourceImage(0, rgba, w, h, B.ldr_image_type.cRGBA32.value);
@@ -43,6 +44,7 @@ export function encodeUASTC(B, rgba, w, h, { srgb = true, mips = true, rdo = fal
     e.setKTX2AndBasisSRGBTransferFunc(srgb);
     e.setMipGen(mips);
     e.setCheckForAlpha(true);
+    e.setPackUASTCFlags(level);
     if (rdo) e.setRDOUASTC(true);
     const out = new Uint8Array(w * h * 8 + (1 << 16));
     const n = e.encode(out);
