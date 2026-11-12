@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import { readKTX2 } from '../src/scene/ktx2.js';
-import { unpackBlock, uastcToRGBA } from '../src/scene/uastc.js';
+import { unpackBlock, uastcToRGBA, uastcToBC7 } from '../src/scene/uastc.js';
 import { loadBasis, encodeUASTC, transcodeReference } from './fixtures/basis.mjs';
 
 let passed = 0;
@@ -84,6 +84,34 @@ test("every block decodes to the RGBA Basis's own transcoder gives, at every lev
     });
   }
   console.log(`      modes seen: ${[...modes].sort((a, b) => a - b).join(' ')}`);
+});
+
+test("every block becomes the BC7 block Basis's own transcoder writes, at every level", () => {
+  // The first differing block of each UASTC mode, and how many differ, so one run shows every mode's state.
+  const first = new Map(), counts = new Map();
+  let blocks = 0;
+  for (const { name, rdo, file } of corpus) {
+    const t = readKTX2(file);
+    t.levels.forEach((level, l) => {
+      const ours = uastcToBC7(level.data, level.width, level.height);
+      const theirs = transcodeReference(B, file, l, 'cTFBC7_RGBA');
+      assert.equal(ours.length, theirs.length, `${name}, level ${l}: size`);
+      for (let b = 0; b < ours.length; b += 16) {
+        blocks++;
+        let same = true;
+        for (let i = 0; i < 16; i++) if (ours[b + i] !== theirs[b + i]) { same = false; break; }
+        if (same) continue;
+        const mode = unpackBlock(level.data, b).mode;
+        counts.set(mode, (counts.get(mode) ?? 0) + 1);
+        if (!first.has(mode)) {
+          first.set(mode, `${name}${rdo ? ', RDO' : ''}, level ${l}, block ${b / 16}:\n        ours  ${Array.from(ours.subarray(b, b + 16)).join(',')}\n        Basis ${Array.from(theirs.subarray(b, b + 16)).join(',')}`);
+        }
+      }
+    });
+  }
+  for (const [mode, text] of [...first].sort((a, b) => a[0] - b[0])) console.log(`      mode ${mode}: ${counts.get(mode)} blocks differ; first, ${text}`);
+  assert.equal(first.size, 0, `blocks that differ from Basis's, of ${blocks}`);
+  console.log(`      ${blocks} blocks, all the same`);
 });
 
 console.log(`\n${passed} checks passed\n`);
