@@ -79,7 +79,7 @@ export async function decodeImages(json, buffers, {
  * waiting and none is free. Plain workers and transferred buffers, so no
  * cross-origin isolation is needed, unlike the job system's.
  */
-function transcoderPool(createWorker, size) {
+export function transcoderPool(createWorker, size) {
   const idle = [], queue = [], workers = [];
   const next = (worker) => {
     const job = queue.shift();

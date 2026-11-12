@@ -296,24 +296,24 @@ Notes: the arrays are written into a glTF file and loaded, so a mesh made this w
 
 Loads an image as a mipmapped GPU texture, for sprites (`scene.addSprite({ texture })`).
 
-`source` is a URL string, a `Blob`, an `ImageBitmap`, or anything `createImageBitmap` takes.
+`source` is a URL string, a `Blob`, an `ImageBitmap`, or anything `createImageBitmap` takes. A URL or `Blob` holding a KTX2 file (Basis UASTC or ETC1S, known by its header, not its name) is transcoded instead, as [`engine.load`](#engine-load) does its KTX2 images: to ASTC 4x4 or BC7 where the device has one, keeping the file's own mips, else RGBA8.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `srgb` | `true` | The image holds colour. Pass `false` for data such as masks. |
+| `srgb` | `true` | The image holds colour. Pass `false` for data such as masks. For a KTX2, this decides, not the file's own transfer function. |
 | `pixelated` | `false` | For pixel art: enlarged, each texel stays a hard square, like CSS `image-rendering: pixelated`. |
 | `label` | `'texture'` | GPU label, for error messages. |
 | `fetch` | `globalThis.fetch` | Replaces `fetch` for downloading a URL `source`. |
 
 Returns: `{ texture, view, width, height, pixelated }`.
-Throws: `'loadTexture: <url> returned <status>'`; `'loadTexture: this engine was destroyed'`; decode errors from `createImageBitmap`.
+Throws: `'loadTexture: <url> returned <status>'`; `'loadTexture: this engine was destroyed'`; `'loadTexture: <label> is <w>x<h>, past this device's <max>'` for a KTX2 too big for the device, before any of it is transcoded; decode errors from `createImageBitmap`, and from the KTX2 transcoder (`'ktx2: ...'`, `'etc1s: ...'`).
 
 ```js
 const pin = await engine.loadTexture('pin.png', { pixelated: true });
 scene.addSprite({ texture: pin, position: [0, 1, 0] });
 ```
 
-Notes: the pixels are used as authored, with no colour conversion or premultiplied alpha. Free with [`engine.unload`](#engine-unload).
+Notes: the pixels are used as authored, with no colour conversion or premultiplied alpha. A KTX2 with one level, or a size that is not whole 4x4 blocks, comes as RGBA8 with mips made as an image's are. Free with [`engine.unload`](#engine-unload).
 
 <a id="engine-loadfont"></a>
 ### `engine.loadFont(css)` → `Promise<Font>`

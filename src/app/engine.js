@@ -30,7 +30,7 @@ import { openSurface } from '../render/shadows.js';
 import { ALPHA_OPAQUE } from '../render/material.js';
 import { chunkBoxes } from '../scene/bounds.js';
 import { readSplats } from '../scene/splats.js';
-import { GLTFTextures } from '../render/textures.js';
+import { GLTFTextures, ktx2Texture } from '../render/textures.js';
 import { createTexture2D, uploadImage, generateMipmaps, decodeImageBytes } from '../rhi/texture.js';
 import { Font } from '../render/text.js';
 import { parseCube, uploadLUT } from '../render/grading.js';
@@ -41,7 +41,7 @@ import { meshGLB } from '../scene/gltf/write.js';
 import { Camera } from '../scene/camera.js';
 import { Camera2D } from '../scene/camera2d.js';
 import { loadGLTF, DEFAULT_MATERIAL } from '../scene/gltf/parse.js';
-import { decodeImages, imageColorSpaces } from '../scene/gltf/images.js';
+import { decodeImages, imageColorSpaces, imageSize, transcoderPool } from '../scene/gltf/images.js';
 import { Clock } from '../core/time.js';
 import { JobSystem, JOB_COMPOSE_TRANSFORMS, JOB_WORLD_BOUNDS, JOB_DRAW_DATA } from '../core/jobs.js';
 import { composeRange } from '../scene/transformJob.js';
@@ -100,6 +100,9 @@ export function createModuleWorker(
   }
   return new WorkerClass(shim, { type: 'module' });
 }
+
+/** A worker that transcodes KTX2 images (scene/gltf/ktx2Worker.js), for load and loadTexture. */
+const ktx2Worker = () => createModuleWorker(new URL('../scene/gltf/ktx2Worker.js', import.meta.url));
 
 /**
  * What a renderer is set to, carried to the one that replaces it after a lost
@@ -328,6 +331,12 @@ export class Winding {
     return this._loading(() => this._loadTexture(source, options), (made) => this._keep(made, 'texture', source, options));
   }
 
+  /** What KTX2 images become here: ASTC first, since UASTC goes to it with nothing lost, then BC7. */
+  _ktx2Target() {
+    const { features } = this.gpu;
+    return features.has('texture-compression-astc') ? 'astc' : features.has('texture-compression-bc') ? 'bc7' : 'rgba';
+  }
+
   async _loadTexture(source, options) {
     const { srgb = true, pixelated = false, label = 'texture', fetch = globalThis.fetch } = options;
     this._assertAlive('loadTexture');
@@ -336,6 +345,25 @@ export class Winding {
       const response = await fetch(source);
       if (!response.ok) throw new Error(`loadTexture: ${source} returned ${response.status}`);
       image = await response.blob();
+    }
+    // A KTX2 file, known by its header: transcoded on a worker, its own mips kept.
+    const header = image instanceof Blob ? imageSize(new Uint8Array(await image.slice(0, 28).arrayBuffer())) : null;
+    if (header?.ktx2) {
+      const max = this.gpu.limits.maxTextureDimension2D;
+      if (header.width > max || header.height > max) {
+        throw new RangeError(`loadTexture: ${label} is ${header.width}x${header.height}, past this device's ${max}`);
+      }
+      const pool = transcoderPool(ktx2Worker, 1);
+      let transcoded;
+      try {
+        transcoded = await pool.run(new Uint8Array(await image.arrayBuffer()), this._ktx2Target(), true);
+      } finally {
+        pool.close();
+      }
+      this._assertAlive('loadTexture');
+      // Bled as a PNG's are, where its mips are made here: a sprite is often enlarged.
+      const texture = await ktx2Texture(this.gpu, transcoded, { srgb, label, mipOptions: { bleed: true } });
+      return { texture, view: texture.createView(), width: texture.width, height: texture.height, pixelated: pixelated === true };
     }
     // The bytes as authored: no colour conversion and no premultiplying, as
     // for glTF images (scene/gltf/images.js). Whether they are sRGB is the
@@ -554,11 +582,10 @@ export class Winding {
             baseURL, fetchImpl, maxDimension: limits.maxTextureDimension2D,
             // KTX2 images transcoded on workers, to what this device samples:
             // ASTC first, since UASTC goes to it with nothing lost, then BC7.
-            ktx2Target: this.gpu.features.has('texture-compression-astc') ? 'astc'
-              : this.gpu.features.has('texture-compression-bc') ? 'bc7' : 'rgba',
+            ktx2Target: this._ktx2Target(),
             // ASTC and BC7 made on the GPU (render/uastcGPU.js): the workers only undo zstd.
             ktx2OnGPU: true,
-            createTranscoder: () => createModuleWorker(new URL('../scene/gltf/ktx2Worker.js', import.meta.url)),
+            createTranscoder: ktx2Worker,
             // A core each but this thread's: unlike the job system's, these
             // wait on messages, never spin, so its cap of 7 does not apply.
             transcoders: Math.max(1, (navigator.hardwareConcurrency ?? 4) - 1),

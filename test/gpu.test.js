@@ -3111,6 +3111,48 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report;
   });
 
+  await step("loadTexture takes a KTX2: the block format the GPU has and the file's mips, or RGBA8 mipped from one level", async () => {
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '64px';
+    canvas.style.height = '64px';
+    document.body.appendChild(canvas);
+    const probe = await Winding.create(canvas);
+    try {
+      probe.gpu.device.pushErrorScope('validation');
+      const { features } = probe.gpu;
+      const expected = features.has('texture-compression-astc') ? 'astc-4x4-unorm-srgb'
+        : features.has('texture-compression-bc') ? 'bc7-rgba-unorm-srgb' : 'rgba8unorm-srgb';
+      const COLOURS = [[200, 60, 30, 255], [30, 200, 60, 255], [60, 30, 200, 255], [90, 90, 90, 255]];
+      const ktx2 = await probe.loadTexture(solidKTX2URI(8, COLOURS));
+      const one = await probe.loadTexture(solidKTX2URI(8, COLOURS.slice(0, 1)));
+      const png = await probe.loadTexture(twoToneImageURI(`rgb(${COLOURS[0].slice(0, 3)})`, `rgb(${COLOURS[0].slice(0, 3)})`));
+      const made = [ktx2, one].map(({ texture }) => `${texture.format} x${texture.mipLevelCount}`);
+      if (made[0] !== `${expected} x4` || made[1] !== 'rgba8unorm-srgb x4') {
+        throw new Error(`made ${made.join(' and ')}, not ${expected} x4 and rgba8unorm-srgb x4`);
+      }
+      // Each drawn over the whole view, so its first level is what shows.
+      const { width: W, height: H, pixelRatio: r } = probe.gpu;
+      const centre = async (texture) => {
+        const scene = probe.createScene();
+        scene.addSprite({ texture, position: [0, 0], size: [W / r, H / r], pivot: [0, 0] });
+        probe.renderFrame(scene, new Camera2D({ background: [0, 0, 0, 1] }));
+        const pixels = await probe.gpu.readPixels();
+        const i = ((H >> 1) * W + (W >> 1)) * 4;
+        return [pixels[i], pixels[i + 1], pixels[i + 2]];
+      };
+      const fromKTX2 = await centre(ktx2), fromOne = await centre(one), fromPNG = await centre(png);
+      if ([fromKTX2, fromOne].some((c) => c.some((v, k) => Math.abs(v - fromPNG[k]) > 2))) {
+        throw new Error(`the KTX2s drew ${fromKTX2} and ${fromOne}, the PNG ${fromPNG}`);
+      }
+      const error = await probe.gpu.device.popErrorScope();
+      if (error) throw new Error(`validation: ${error.message}`);
+      return `${made.join(', ')}; drew ${fromKTX2} and ${fromOne} where the PNG drew ${fromPNG}`;
+    } finally {
+      probe.destroy();
+      canvas.remove();
+    }
+  });
+
   await step('2D lands colours exactly, blends in sRGB, stacks by layer, keeps pixel art sharp, and moves one slot', async () => {
     const canvas = document.createElement('canvas');
     canvas.style.width = '320px';

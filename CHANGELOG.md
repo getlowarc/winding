@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback is no longer fetched. ETC1S (BasisLZ) files, Basis's smaller mode, are read too, on the
   workers, to ASTC or BC7 as Basis's transcoder writes them: a 1024x1024 texture with mips in 24 ms
   to ASTC (Basis's wasm: 12) and 57 ms to BC7, whose chroma filter is most of it (Basis: 23).
+  `engine.loadTexture` takes a KTX2 file too, for sprites, tilesets and anything else outside a glTF.
+  A page that never loads one never downloads the transcoder: it is fetched by the first KTX2.
 
 ### Changed
 

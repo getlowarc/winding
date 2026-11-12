@@ -11,7 +11,10 @@ import {
 import {
   materialTextureSlots, samplerDescriptor, textureImageIndex, textureSamplerIndex, imageColorSpaces,
 } from '../scene/gltf/images.js';
-import { UastcGPU } from './uastcGPU.js';
+// The GPU transcoder and its tables (render/uastcGPU.js, scene/uastc.js, about
+// 60 KB) are loaded by the first UASTC image, not by every page: off means off.
+let uastcGPU = null;
+const gpuTranscoder = () => (uastcGPU ??= import('./uastcGPU.js'));
 
 /** WebGPU's formats for transcodeKTX2's targets, sRGB by appending '-srgb'. */
 const KTX2_FORMATS = { astc: 'astc-4x4-unorm', bc7: 'bc7-rgba-unorm', rgba: 'rgba8unorm' };
@@ -39,6 +42,32 @@ function uploadLevels(rhi, image, srgb, label) {
     rhi.queue.writeTexture({ texture, mipLevel }, data, { bytesPerRow: width * 4 }, [width, height]);
   });
   return texture;
+}
+
+/** A one-level KTX2 image, as RGBA8 (transcodeKTX2), with mips made here as a PNG's are. */
+function uploadOneLevel(rhi, image, srgb, label, mipOptions) {
+  const texture = createTexture2D(rhi, { label, width: image.width, height: image.height, srgb, mipmapped: true });
+  rhi.queue.writeTexture({ texture }, image.levels[0].data, { bytesPerRow: image.width * 4 }, [image.width, image.height]);
+  generateMipmaps(rhi, texture, mipOptions);
+  return texture;
+}
+
+/**
+ * A texture from a transcoded KTX2 image (transcodeKTX2's result, with `gpu`):
+ * UASTC transcoded here on the GPU, block levels uploaded as the file made
+ * them, one RGBA8 level mipped. Resolves once its copies are on the queue.
+ */
+export async function ktx2Texture(rhi, image, { srgb, label, mipOptions = {} }) {
+  if (image.uastc) {
+    const texture = levelsTexture(rhi, image, srgb, label);
+    const { UastcGPU } = await gpuTranscoder();
+    const made = await UastcGPU.for(rhi).transcode(image, image.target);
+    made.copy(texture);
+    made.destroy();
+    return texture;
+  }
+  if (image.levels.length > 1) return uploadLevels(rhi, image, srgb, label);
+  return uploadOneLevel(rhi, image, srgb, label, mipOptions);
 }
 
 /**
@@ -110,7 +139,7 @@ export class GLTFTextures {
       // Transcoded once on the GPU, however many textures (sRGB, linear) take it.
       texture = levelsTexture(this.rhi, bitmap, srgb, label);
       if (!bitmap.transcoded) {
-        bitmap.transcoded = UastcGPU.for(this.rhi).transcode(bitmap, bitmap.target);
+        bitmap.transcoded = gpuTranscoder().then(({ UastcGPU }) => UastcGPU.for(this.rhi).transcode(bitmap, bitmap.target));
         this._transcodes.push(bitmap.transcoded);
       }
       const made = texture;
@@ -118,15 +147,16 @@ export class GLTFTextures {
     } else if (bitmap.levels?.length > 1) {
       texture = uploadLevels(this.rhi, bitmap, srgb, label);
     } else {
-      texture = createTexture2D(this.rhi, { label, width: bitmap.width, height: bitmap.height, srgb, mipmapped: true });
-      // A KTX2 image of one level comes as RGBA8 (transcodeKTX2), to be mipped here like any other.
-      if (bitmap.levels) {
-        this.rhi.queue.writeTexture({ texture }, bitmap.levels[0].data, { bytesPerRow: bitmap.width * 4 }, [bitmap.width, bitmap.height]);
-      } else uploadImage(this.rhi, texture, bitmap);
       // Mips are averaged through an -srgb view when the format is sRGB, so the
       // filtering happens in linear light without any manual conversion. By
       // coverage only where alpha is coverage: elsewhere a clear block went black.
-      generateMipmaps(this.rhi, texture, { coverage: srgb && this._coverage.has(imageIndex) });
+      const mipOptions = { coverage: srgb && this._coverage.has(imageIndex) };
+      if (bitmap.levels) texture = uploadOneLevel(this.rhi, bitmap, srgb, label, mipOptions);
+      else {
+        texture = createTexture2D(this.rhi, { label, width: bitmap.width, height: bitmap.height, srgb, mipmapped: true });
+        uploadImage(this.rhi, texture, bitmap);
+        generateMipmaps(this.rhi, texture, mipOptions);
+      }
     }
 
     this._textures.set(key, texture);
