@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The depth prepass reads positions alone.** Meshes merged into one draw (a level of distinct
+  meshes) lay down their depth before they are shaded, and that prepass fetched each vertex whole --
+  60 bytes -- for its 12 bytes of position. It reads the positions-only copy the shadow passes already
+  use: the same depth, so the same pixels. Sponza at 1280x720 on Iris Xe, one frame held: the
+  forward pass from 2.02 to 1.95 ms.
+
 ## [1.9.2] - 2026-11-11
 
 **Crowds and shadows, cheaper.** A crowd's moving parts -- their transforms, world boxes, draw

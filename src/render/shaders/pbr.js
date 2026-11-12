@@ -216,6 +216,8 @@ struct CascadeView {
 @group(0) @binding(23) var          cascadeSampler : sampler_comparison;
 // Every primitive's vertices, VERTEX_STRIDE floats each, for vsMerged.
 @group(0) @binding(24) var<storage, read> geometry : array<f32>;
+// Every vertex's position alone, at the same numbering (geometry.js): what a depth prepass reads.
+@group(0) @binding(25) var<storage, read> geometryPositions : array<f32>;
 // The opaque scene, mipped, for transmissive surfaces (render/transmission.js).
 @group(0) @binding(18) var         behindMap : texture_2d<f32>;
 // Reflection probes' prefiltered cubes, and their boxes, smallest first.
@@ -380,7 +382,9 @@ fn vsMerged(@builtin(vertex_index) code : u32) -> VertexOut {
  * vsMerged for the depth prepass: the position alone, by the same arithmetic
  * shadeVertex does (a merged mesh is never morphed), so with @invariant the
  * depth is the one the shading draw then matches exactly. The rest of the
- * vertex -- fetches, normal matrix, tangent, fifteen outputs -- it skips.
+ * vertex -- fetches, normal matrix, tangent, fifteen outputs -- it skips, and
+ * it reads the position from the arena's positions-only copy: the same three
+ * floats, where the whole 60-byte vertex was fetched for twelve of them.
  */
 struct DepthOut {
   @builtin(position) @invariant clip : vec4<f32>,
@@ -390,8 +394,8 @@ struct DepthOut {
 fn vsMergedDepth(@builtin(vertex_index) code : u32) -> DepthOut {
   let at = batch.firstVisible + (code >> batch.shift) * 2u;
   let vertex = visibleItems[at + 1u] + (code & ((1u << batch.shift) - 1u));
-  let o = vertex * 15u;
-  let world = drawData[visibleItems[at]].model * vec4<f32>(geometry[o], geometry[o + 1u], geometry[o + 2u], 1.0);
+  let o = vertex * 3u;
+  let world = drawData[visibleItems[at]].model * vec4<f32>(geometryPositions[o], geometryPositions[o + 1u], geometryPositions[o + 2u], 1.0);
   return DepthOut(frame.viewProjection * world);
 }
 

@@ -268,6 +268,8 @@ export class Renderer {
       { binding: 23, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
       // The geometry arena's vertices, for the merged draws, which read them by hand.
       { binding: 24, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      // And their positions alone, for the merged depth prepass: see vsMergedDepth.
+      { binding: 25, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
     ];
     checkStorageStages(rhi, frameEntries);
     this.materials = adopt?.materials ?? new MaterialRegistry(rhi, {
@@ -1039,6 +1041,7 @@ export class Renderer {
           { binding: 22, resource: { buffer: this.decals.buffer } },
           { binding: 23, resource: this.shadows.cascadeSampler },
           { binding: 24, resource: { buffer: this.geometry.vertexBuffer } },
+          { binding: 25, resource: { buffer: this.geometry.positionBuffer } },
         ],
       });
       this._frameBindGroups.set(environment, bindGroup);
