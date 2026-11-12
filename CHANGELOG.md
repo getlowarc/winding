@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-12
+
+**Compressed textures, with no dependency.** KTX2 images (`KHR_texture_basisu`), in both of Basis
+Universal's modes, load as ASTC or BC7 where the GPU has one: a quarter of the texture memory, and
+fewer bytes read a pixel. Sponza with its images as UASTC, on Iris Xe at 1280x720: 95 MB of texture
+instead of 380, a GPU frame 12% shorter, and a first load of 1.2 s instead of 1.7. Every block is
+the one Basis Universal's own transcoder writes; UASTC is transcoded on the GPU. Also: how sharply
+textures are filtered can now be chosen, and the merged depth prepass reads positions alone.
+
 ### Added
 
 - **`Winding.create({ anisotropy })`: how sharply material textures are filtered at a slant**, 1 to
@@ -2707,7 +2716,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.9.2...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/getlowarc/winding/compare/v1.9.2...v1.10.0
 [1.9.2]: https://github.com/getlowarc/winding/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/getlowarc/winding/compare/v1.8.0...v1.9.0
