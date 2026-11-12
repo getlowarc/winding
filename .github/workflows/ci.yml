@@ -70,12 +70,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
-      - if: contains(needs.plan.outputs.node, 'uastc') || contains(needs.plan.outputs.node, 'ktx2')
+      - if: contains(needs.plan.outputs.node, 'uastc') || contains(needs.plan.outputs.node, 'ktx2') || contains(needs.plan.outputs.node, 'etc1s')
         uses: actions/cache@v4
         with:
           path: test/vendor/basis
           key: basis-${{ hashFiles('test/fixtures/basis.sha256.json') }}
-      - if: contains(needs.plan.outputs.node, 'uastc') || contains(needs.plan.outputs.node, 'ktx2')
+      - if: contains(needs.plan.outputs.node, 'uastc') || contains(needs.plan.outputs.node, 'ktx2') || contains(needs.plan.outputs.node, 'etc1s')
         name: Basis Universal's reference, for the KTX2 suites
         run: node test/fetch-basis.mjs
       - name: The Node suites the change reaches

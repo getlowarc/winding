@@ -10,6 +10,7 @@
 
 import { zstdDecompress } from '../core/zstd.js';
 import { uastcToRGBA, uastcToBC7, uastcToASTC } from './uastc.js';
+import { readGlobalData, decodeSlice, etc1sToRGBA } from './etc1s.js';
 
 const IDENTIFIER = [0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A];
 
@@ -108,10 +109,22 @@ export function readKTX2(bytes) {
  */
 export function transcodeKTX2(bytes, target, { gpu = false } = {}) {
   const file = readKTX2(bytes);
-  if (file.basis === 'etc1s') fail('ETC1S (BasisLZ) is not read yet, only UASTC');
-  if (file.basis !== 'uastc') fail('not Basis Universal: KHR_texture_basisu holds UASTC or ETC1S');
+  if (file.basis !== 'uastc' && file.basis !== 'etc1s') fail('not Basis Universal: KHR_texture_basisu holds UASTC or ETC1S');
   if (file.depth > 1 || file.layers > 1 || file.faces !== 1) fail('not a 2D image (a volume, an array or a cube)');
   const { width, height, levels } = file;
+  if (file.basis === 'etc1s') {
+    // ETC1S as RGBA8 for now, every level the file has; one level gets mips made on the GPU.
+    const global = readGlobalData(file.globalData ?? new Uint8Array(0), levels.length);
+    return {
+      width, height, target: 'rgba',
+      levels: levels.map((level, l) => {
+        const image = global.images[l], across = Math.ceil(level.width / 4), down = Math.ceil(level.height / 4);
+        const slice = (at, length) => decodeSlice(global, level.data, at, at + length, across, down);
+        const alpha = image.alpha[1] > 0 ? slice(image.alpha[0], image.alpha[1]) : null;
+        return { width: level.width, height: level.height, data: etc1sToRGBA(global, slice(image.rgb[0], image.rgb[1]), alpha, level.width, level.height) };
+      }),
+    };
+  }
   if (levels.length === 1 || width % 4 || height % 4) target = 'rgba';
   if (gpu && target !== 'rgba') return { width, height, target, uastc: true, levels };
   const transcode = target === 'astc' ? uastcToASTC : target === 'bc7' ? uastcToBC7 : uastcToRGBA;

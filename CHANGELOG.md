@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in a quarter of the texture memory (95 MB, not 380), with the mips the file carries instead of
   made ones. The container, its zstd and the transcoder are Winding's own, no dependency, and every
   block is the one Basis Universal's transcoder writes, on the CPU and the GPU alike. A file's PNG
-  fallback is no longer fetched. ETC1S (BasisLZ) files are not read yet.
+  fallback is no longer fetched. ETC1S (BasisLZ) files, Basis's smaller mode, are read too, decoded on
+  the workers to RGBA8 for now: the same texels Basis's transcoder gives, at about its speed.
 
 ### Changed
 

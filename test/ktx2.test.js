@@ -160,7 +160,8 @@ test('one level, or a size that is not whole blocks, comes as RGBA8, for mips th
 
 test('what transcoding does not read yet, or cannot, says so', () => {
   const etc1s = ktx2({ width: 8, height: 8, levels: [bytes(40)], scheme: KTX2_BASISLZ, model: 163, globalData: bytes(36) });
-  assert.throws(() => transcodeKTX2(etc1s, 'bc7'), /ktx2: ETC1S \(BasisLZ\) is not read yet, only UASTC/);
+  // ETC1S is read (test/etc1s.test.js); global data that is only noise says what is wrong with it.
+  assert.throws(() => transcodeKTX2(etc1s, 'bc7'), /^Error: etc1s: /);
   const bc7 = ktx2({ vkFormat: 145, width: 8, height: 8, levels: [bytes(64)], model: 128 });
   assert.throws(() => transcodeKTX2(bc7, 'bc7'), /ktx2: not Basis Universal/);
   const cube = ktx2({ width: 4, height: 4, levels: solidLevels(4, 4, 1) });

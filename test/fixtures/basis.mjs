@@ -55,6 +55,30 @@ export function encodeUASTC(B, rgba, w, h, { srgb = true, mips = true, rdo = fal
   }
 }
 
+/**
+ * A w x h RGBA image as an ETC1S KTX2 file (BasisLZ), with mips unless `mips`
+ * is false. `quality` is Basis's 1 to 255: lower shares more codebook entries
+ * between blocks, which reaches more of the slice decoder's runs and reuse.
+ */
+export function encodeETC1S(B, rgba, w, h, { srgb = true, mips = true, quality = 128 } = {}) {
+  const e = new B.BasisEncoder();
+  try {
+    e.setSliceSourceImage(0, rgba, w, h, B.ldr_image_type.cRGBA32.value);
+    e.setFormatMode(B.basis_tex_format.cETC1S.value);
+    e.setCreateKTX2File(true);
+    e.setKTX2AndBasisSRGBTransferFunc(srgb);
+    e.setMipGen(mips);
+    e.setCheckForAlpha(true);
+    e.setQualityLevel(quality);
+    const out = new Uint8Array(w * h * 8 + (1 << 16));
+    const n = e.encode(out);
+    if (!n) throw new Error('basis: encode failed');
+    return out.slice(0, n);
+  } finally {
+    e.delete();
+  }
+}
+
 /** Level `level` of a KTX2 file, transcoded by the reference to `format` (a transcoder_texture_format name). */
 export function transcodeReference(B, ktx2, level, format) {
   const k = new B.KTX2File(ktx2);
