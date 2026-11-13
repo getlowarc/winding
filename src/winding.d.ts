@@ -137,6 +137,16 @@ export type IKOptions =
   | { type: 'twoBone'; end: Node; target: Node | Vec3; pole?: Node | Vec3 | null; weight?: number }
   | { type: 'aim'; node: Node; target: Node | Vec3; axis?: Vec3; limit?: number; weight?: number };
 
+export interface SceneSnapshot {
+  version: 1;
+  nodes: {
+    path: string; position: number[]; rotation: number[]; scale: number[]; visible?: false;
+    tint?: number[]; glow?: number[]; hookParams?: number[];
+    outline?: { color: number[]; width: number; through: boolean };
+    animation?: unknown;
+  }[];
+}
+
 /** A handle from scene.addIK. */
 export interface IK {
   readonly type: 'twoBone' | 'aim';
@@ -581,6 +591,10 @@ export class Scene {
   remove(node: Node): void;
   update(): number;
   advance(dt: number): void;
+  /** Every node's state under root, as JSON-ready data: see docs/API.md. */
+  snapshot(root?: Node | null): SceneSnapshot;
+  /** Put a snapshot back, by path. */
+  restore(snapshot: SceneSnapshot, root?: Node | null): { restored: number; missing: string[] };
   /** A limb reaching for a point, or a bone turned to look at one: see docs/API.md. */
   addIK(options: IKOptions): IK;
   setIK(ik: IK, changes: Partial<IKOptions>): void;

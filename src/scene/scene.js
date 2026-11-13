@@ -9,6 +9,7 @@
 // every frame to update bounds and cull. The Node objects users hold are
 // cursors over this (see node.js), not entries in it.
 
+import { snapshotScene, restoreScene } from './snapshot.js';
 import { ikRecord, solveIK, ikAlive, releaseIK } from './ik.js';
 import { assertFinite } from '../core/assert.js';
 import { HandleAllocator, handleIndex, NULL_HANDLE } from '../core/handle.js';
@@ -1297,6 +1298,28 @@ export class Scene {
     if (!sameBones) releaseIK(this.transforms, handle);
     Object.assign(handle, next, sameBones ? { input: handle.input, wrote: handle.wrote } : {});
     this.changes++;
+  }
+
+  /**
+   * The state of every node under `root` (the whole scene without one) as
+   * plain data, JSON-ready: where each is, whether shown, its tint, glow,
+   * hook params and outline, and what its model is playing. See restore().
+   */
+  snapshot(root = null) {
+    if (root !== null && !root.alive) throw new Error('snapshot: the root node was removed');
+    return snapshotScene(this, root);
+  }
+
+  /**
+   * Put a snapshot back: each node found by where it sits under `root` and
+   * its name, as snapshot() recorded it. Returns { restored, missing }: how
+   * many were, and the paths of those not found.
+   */
+  restore(snapshot, root = null) {
+    if (root !== null && !root.alive) throw new Error('restore: the root node was removed');
+    const result = restoreScene(this, snapshot, root);
+    this.changes++;
+    return result;
   }
 
   /** End an IK. Its bones go back to the pose under it. */

@@ -1332,4 +1332,42 @@ test('aim IK turns a bone to look at its target, no further than its limit, and 
   assert.equal(scene._ik.length, 0, 'its target gone: dropped');
 });
 
+test('a snapshot round-trips through JSON into a scene built again, by path, and says what it could not find', () => {
+  const build = (extra = false) => {
+    const scene = new Scene({ capacity: 64 });
+    const army = scene.createNode({ name: 'Army' });
+    const a = scene.createNode({ parent: army, name: 'Soldier' });
+    const b = scene.createNode({ parent: army, name: 'Soldier' });
+    const c = scene.createNode({ parent: army });
+    if (extra) scene.createNode({ name: 'Late' });
+    scene.update();
+    return { scene, army, a, b, c };
+  };
+  const first = build();
+  first.a.setPosition(1, 2, 3).setTint([0.5, 1, 1]).setOutline([1, 0, 0], { width: 3 });
+  first.b.setPosition(4, 5, 6).setVisible(false).setHookParams(0.25);
+  first.c.setScale(2, 2, 2).setGlow([1, 0, 0]);
+  const snap = JSON.parse(JSON.stringify(first.scene.snapshot()));
+  assert.deepEqual(snap.nodes.map((n) => n.path), ['Army', 'Army/Soldier', 'Army/Soldier@1', 'Army/#']);
+
+  const second = build();
+  second.a.setTint([0, 0, 1]);
+  const result = second.scene.restore(snap);
+  second.scene.update();
+  assert.deepEqual(result, { restored: 4, missing: [] });
+  assert.deepEqual(Array.from(second.a.worldPosition([0, 0, 0])), [1, 2, 3]);
+  assert.deepEqual(second.a.tint, [0.5, 1, 1]);
+  assert.deepEqual(second.a.outline, { color: [1, 0, 0, 1], width: 3, through: false });
+  assert.ok(!second.b.visible && second.b.hookParams[0] === 0.25);
+  assert.deepEqual(second.c.glow, [1, 0, 0]);
+
+  // Under a root: paths from it, and only what is under it.
+  const part = first.scene.snapshot(first.army);
+  assert.deepEqual(part.nodes.map((n) => n.path), ['', 'Soldier', 'Soldier@1', '#']);
+  const third = build(true);
+  third.scene.restore({ ...snap, nodes: [...snap.nodes, { ...snap.nodes[0], path: 'Gone' }] });
+  assert.deepEqual(third.scene.restore({ version: 1, nodes: [{ ...snap.nodes[1], path: 'Nowhere/Soldier' }] }), { restored: 0, missing: ['Nowhere/Soldier'] });
+  assert.throws(() => third.scene.restore({ nodes: [] }), /^Error: restore: not a snapshot scene.snapshot made/);
+});
+
 console.log(`\n${passed} checks passed\n`);

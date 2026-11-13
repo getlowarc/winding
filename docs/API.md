@@ -90,9 +90,9 @@ Every call, setting and entry, A to Z by its name.
 
 **Q** &nbsp; [`quat`](#math-quat)
 
-**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run) · [`scene.removeIK()`](#scene-removeik) · [`input.released()`](#input-released)
+**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run) · [`scene.removeIK()`](#scene-removeik) · [`input.released()`](#input-released) · [`scene.restore()`](#scene-restore)
 
-**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline) · [`scene.setIK()`](#scene-setik)
+**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline) · [`scene.setIK()`](#scene-setik) · [`scene.snapshot()`](#scene-snapshot)
 
 **T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof) · [`scene.trailOf()`](#scene-trailof)
 
@@ -1265,6 +1265,34 @@ engine.renderFrame(scene, camera);
 Seconds [`scene.advance`](#scene-advance) has moved the scene on, from 0: the clock [surface hooks](#engine-createsurfacehook) read as `time`, so a paused game's effects pause with it. Writable: set it back to 0 to start over.
 
 Notes: hooks read it as a 32-bit float, which after about four hours of play counts in steps of a millisecond.
+
+<a id="scene-snapshot"></a>
+### `scene.snapshot(root)` → `object`
+
+The state of every node under `root`, or of the whole scene without one, as plain data that `JSON.stringify` keeps: for each node its position, rotation and scale, whether it is hidden, its own tint, glow, hook params and outline, and, for a model's root, what each layer of its animation is playing, how far in and how fast. For checkpoints, a replay, rewind, an editor's undo. Put back with [`restore`](#scene-restore).
+
+Returns: `{ version: 1, nodes: [{ path, position, rotation, scale, visible?, tint?, glow?, hookParams?, outline?, animation? }] }`. A node's `path` is the names from the root down, joined by `/`; a name its earlier siblings share gets `@1`, `@2` and on, and a node with no name is `#`. With a root, the root itself is the empty path.
+
+Throws: `'snapshot: the root node was removed'`.
+
+```js
+localStorage.setItem('checkpoint', JSON.stringify(scene.snapshot(level)));
+// Later, or after a reload that builds the level again:
+scene.restore(JSON.parse(localStorage.getItem('checkpoint')), level);
+```
+
+Notes: what a game keeps for itself -- health, inventory, the wave it is on -- is the game's to save; this is the scene's side of it. Lights', emitters', trails', decals' and IK's settings are not in it: they belong to the code that made them, which makes them again. The nodes' world matrices are not either, since they follow from the rest.
+
+<a id="scene-restore"></a>
+### `scene.restore(snapshot, root)` → `{ restored, missing }`
+
+Puts a [snapshot](#scene-snapshot) back: each node found by its path under `root` (the whole scene without one), and given what was recorded, all of it, so a tint since added is taken off again. Nodes not in the snapshot are left as they are. A node's animation layers are found by name; one this model has not made is made plain, so a game that masks its layers makes them before restoring, as it did the first time. Applied at once: the next `scene.update` composes it.
+
+Returns: how many nodes were restored, and the paths it could not find -- a model not loaded again, a node renamed.
+
+Throws: `'restore: not a snapshot scene.snapshot made (version 1)'`; `'restore: the root node was removed'`; and what the node setters throw for a value out of range.
+
+Notes: paths are by name and by the order nodes were made in, so a scene built again by the same code, loading the same models in the same order, finds every node. Adding or removing nodes elsewhere does not move a path; adding a sibling of the same name earlier than an existing one does.
 
 <a id="scene-bounds"></a>
 ### `scene.bounds(outMin, outMax)` → `boolean`
