@@ -350,7 +350,9 @@ anything is allocated.
 
 **Animation.** All three glTF interpolations, with rotations slerped. Playback is per instance, with
 cross-fades, layers masked to part of a skeleton, additive layers, weight blending with synced clip
-clocks so feet don't slide, and root motion. See [`node.play`](docs/API.md#node-play).
+clocks so feet don't slide, and root motion. See [`node.play`](docs/API.md#node-play). Over the
+animation, [inverse kinematics](docs/API.md#scene-addik): a two-bone limb reaching for a point (feet on
+uneven ground, a hand on a door) and a bone turned to look at one (a head, a turret).
 
 **Skinning and morph targets**, in one vertex shader, morph first as the spec orders them. Weights
 are per instance, and bounds follow both, so a character isn't culled with its arm on screen.

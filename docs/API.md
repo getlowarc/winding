@@ -51,14 +51,14 @@ These hold everywhere, so one learned is one learned for good.
 <a id="contents"></a>
 ## Contents
 
-[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Lights](#lights) · [Particles](#particles) · [Trails](#trails) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
+[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Inverse kinematics](#inverse-kinematics) · [Lights](#lights) · [Particles](#particles) · [Trails](#trails) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
 
 <a id="index"></a>
 ## Index
 
 Every call, setting and entry, A to Z by its name.
 
-**A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes) · [`scene.addTrail()`](#scene-addtrail)
+**A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes) · [`scene.addTrail()`](#scene-addtrail) · [`scene.addIK()`](#scene-addik)
 
 **B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst)
 
@@ -90,9 +90,9 @@ Every call, setting and entry, A to Z by its name.
 
 **Q** &nbsp; [`quat`](#math-quat)
 
-**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run)
+**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run) · [`scene.removeIK()`](#scene-removeik)
 
-**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline)
+**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline) · [`scene.setIK()`](#scene-setik)
 
 **T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof) · [`scene.trailOf()`](#scene-trailof)
 
@@ -1783,6 +1783,62 @@ face.weights[0] = 1;   // full smile
 ```
 
 Notes: the weights belong to the node that carries the mesh, which is often a child of the model's root, not the root itself. A clip that animates the weights overwrites what you write.
+
+<a id="inverse-kinematics"></a>
+## Inverse kinematics
+
+Bones turned to reach for a point or look at one, over whatever pose the animation gives them: feet on uneven ground, a hand on a door handle, a head following the player, a turret tracking its target. Solved in [`scene.update`](#scene-update), after the transforms are composed, in the order they were added; each composes what it turned before the next is solved, so skinning, bounds and shadows all see the result.
+
+Each frame starts from the pose underneath. A bone the animation or the app set this frame is solved from that; one still as the solve left it is solved from what it held before. So a `weight` of 0.5 stays half, and an IK whose target, pole, weight, pose and parent did not move costs nothing and moves nothing.
+
+<a id="scene-addik"></a>
+### `scene.addIK(options)` → `IK`
+
+Adds one. Two kinds:
+
+- `'twoBone'`: a limb of three nodes, `end` (the foot or the hand), its parent (the knee or elbow) and its parent's parent (the hip or shoulder), turned so `end` lands on `target`, solved exactly by the law of cosines. With a `pole`, the knee or elbow points toward it. Out of reach, the limb straightens toward the target.
+- `'aim'`: one node, `node`, turned so its own `axis` points at `target`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `type` | required | `'twoBone'` or `'aim'`. |
+| `target` | required | A node, followed wherever it goes, or a point in the world `[x, y, z]`. |
+| `weight` | `1` | How much of the solve to take, 0 to 1: blend it in and out, or ease a foot down. |
+| `end` | | `'twoBone'`: the last node of the limb. It needs a parent and a grandparent. |
+| `pole` | none | `'twoBone'`: a node or a point the middle joint bends toward. Without one, the limb bends in the plane it is already bent in. |
+| `node` | | `'aim'`: the node to turn. |
+| `axis` | `[0, 0, 1]` | `'aim'`: the direction, in the node's own space, to point at the target. glTF looks down +Z for a node; rigs vary, so check yours. |
+| `limit` | `Math.PI` | `'aim'`: the most it turns from the pose underneath, in radians: a neck that cannot look behind itself. |
+
+Returns: a handle, for [`setIK`](#scene-setik) and [`removeIK`](#scene-removeik).
+
+Throws (all start `addIK:`): `type` not one of the two; `target` missing, or not a node or 3 finite numbers (and the same of `pole` and `axis`); `weight` outside 0 to 1 (`RangeError`); `end` not a live node with a parent and a grandparent; `node` not a live node; `axis` zero; `limit` outside 0 to pi (`RangeError`).
+
+```js
+// A foot on whatever is under it, the knee pointing forward.
+const foot = soldier.find('Foot_L');
+const ik = scene.addIK({ type: 'twoBone', end: foot, target: foot.worldPosition([0, 0, 0]), pole: kneeGuide });
+// Each frame: the ground under the foot.
+const hit = scene.raycast(above(foot), [0, -1, 0]);
+if (hit) scene.setIK(ik, { target: groundPoint(hit), weight: 1 });
+
+// A turret following its target, but no more than 60 degrees off its mount.
+scene.addIK({ type: 'aim', node: turret.find('Barrel'), target: enemy, limit: Math.PI / 3 });
+```
+
+Notes: an IK whose nodes are removed is dropped. A bone moved by more than one IK takes the last one's turn on top of the earlier ones'. Bones are turned, never stretched or moved, and a two-bone limb's middle joint is free to bend either way: the pole, or the bend the pose already has, chooses.
+
+<a id="scene-setik"></a>
+### `scene.setIK(ik, changes)`
+
+Changes an IK's options: the same names `addIK` takes. A new target each frame goes here; one given as a node needs no call at all.
+
+Throws: `'setIK: not an IK of this scene: addIK makes one, removeIK ends it'`, and what `addIK` throws for a bad value, starting `setIK:`.
+
+<a id="scene-removeik"></a>
+### `scene.removeIK(ik)`
+
+Ends an IK. Its bones go back to the pose under it, unless something else has set them since. Removing one twice does nothing.
 
 <a id="lights"></a>
 ## Lights

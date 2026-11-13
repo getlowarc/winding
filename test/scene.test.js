@@ -1260,4 +1260,76 @@ test('world position and rotation are set and kept through parents, from where t
   assert.equal(scene.transforms.parent[handleIndex(hand.entity)], -1, 'not moved under it');
 });
 
+/** A leg: a hip at (0, 2, 0), a knee a metre below it, a foot a metre below that, knee bent a little forward. */
+function leg() {
+  const scene = new Scene({ capacity: 64 });
+  const hip = scene.createNode().setPosition(0, 2, 0);
+  const knee = scene.createNode({ parent: hip }).setPosition(0, -1, 0.05);
+  const foot = scene.createNode({ parent: knee }).setPosition(0, -1, -0.05);
+  scene.update();
+  const at = (node) => Array.from(node.worldPosition([0, 0, 0]));
+  const near = (a, b, tol, what) => assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < tol, `${what}: ${a.map((v) => v.toFixed(3))} for ${b.map((v) => v.toFixed(3))}`);
+  return { scene, hip, knee, foot, at, near };
+}
+
+test('two-bone IK puts the foot on the target, bends the knee toward the pole, and straightens out of reach', () => {
+  const { scene, hip, knee, foot, at, near } = leg();
+  const ik = scene.addIK({ type: 'twoBone', end: foot, target: [0.5, 0.6, 0.3], pole: [0, 1, 5] });
+  scene.update();
+  near(at(foot), [0.5, 0.6, 0.3], 1e-4, 'the foot on the target');
+  const thigh = Math.hypot(...at(knee).map((v, k) => v - at(hip)[k]));
+  assert.ok(Math.abs(thigh - Math.hypot(1, 0.05)) < 1e-5, `the thigh keeps its length: ${thigh}`);
+  assert.ok(at(knee)[2] > 0.3, `the knee toward the pole, forward: ${at(knee)}`);
+  scene.setIK(ik, { pole: [0, 1, -5] });
+  scene.update();
+  near(at(foot), [0.5, 0.6, 0.3], 1e-4, 'still on it');
+  assert.ok(at(knee)[2] < 0.3, `the knee follows the pole back: ${at(knee)}`);
+  scene.setIK(ik, { target: [0, 2, 9] });
+  scene.update();
+  const reach = at(foot).map((v, k) => v - at(hip)[k]);
+  const length = Math.hypot(...reach);
+  near(reach.map((v) => v / length), [0, 0, 1], 1e-3, 'out of reach: straight at it');
+});
+
+test('IK starts each frame from the pose under it: weight does not creep, a still leg stays still, and removing it puts the pose back', () => {
+  const { scene, foot, at, near } = leg();
+  const before = at(foot);
+  const ik = scene.addIK({ type: 'twoBone', end: foot, target: [0.4, 0.8, 0.2], weight: 0.5 });
+  scene.update();
+  const half = before.map((v, k) => v + ([0.4, 0.8, 0.2][k] - v) * 0.5);
+  near(at(foot), half, 1e-4, 'half the way there');
+  for (let i = 0; i < 5; i++) scene.update();
+  near(at(foot), half, 1e-4, 'and still half, frames later');
+  assert.equal(scene.transforms.lastRecomputedCount, 0, 'nothing moved: nothing composed');
+  scene.removeIK(ik);
+  scene.update();
+  near(at(foot), before, 1e-5, 'removed: the pose underneath');
+  assert.throws(() => scene.setIK(ik, { weight: 1 }), /^Error: setIK: not an IK of this scene/);
+  assert.throws(() => scene.addIK({ type: 'twoBone', end: scene.createNode(), target: [0, 0, 0] }), /^Error: addIK: end must be a live node with a parent and a grandparent/);
+  assert.throws(() => scene.addIK({ type: 'reach', target: [0, 0, 0] }), /^Error: addIK: type is 'twoBone' or 'aim'/);
+});
+
+test('aim IK turns a bone to look at its target, no further than its limit, and follows a target node', () => {
+  const scene = new Scene({ capacity: 16 });
+  const head = scene.createNode().setPosition(0, 1, 0);
+  const ball = scene.createNode().setPosition(5, 1, 0);
+  const look = scene.addIK({ type: 'aim', node: head, target: ball });
+  scene.update();
+  const forward = () => {
+    const m = scene.transforms.world, o = handleIndex(head.entity) * 16;
+    return [m[o + 8], m[o + 9], m[o + 10]];
+  };
+  assert.ok(Math.abs(forward()[0] - 1) < 1e-5, `its +Z at the ball: ${forward()}`);
+  ball.setPosition(0, 1, -5);
+  scene.update();
+  assert.ok(Math.abs(forward()[2] + 1) < 1e-5, `the ball moved behind it: ${forward()}`);
+  scene.setIK(look, { limit: Math.PI / 4 });
+  ball.setPosition(5, 1, 0);
+  scene.update();
+  assert.ok(Math.abs(Math.atan2(forward()[0], forward()[2]) - Math.PI / 4) < 1e-4, `turned 45 degrees and no more: ${forward()}`);
+  ball.destroy();
+  scene.update();
+  assert.equal(scene._ik.length, 0, 'its target gone: dropped');
+});
+
 console.log(`\n${passed} checks passed\n`);

@@ -133,6 +133,15 @@ export interface MeshOptions {
   material?: { color?: Vec4; metallic?: number; roughness?: number; emissive?: Vec3; doubleSided?: boolean; hook?: SurfaceHook };
 }
 
+export type IKOptions =
+  | { type: 'twoBone'; end: Node; target: Node | Vec3; pole?: Node | Vec3 | null; weight?: number }
+  | { type: 'aim'; node: Node; target: Node | Vec3; axis?: Vec3; limit?: number; weight?: number };
+
+/** A handle from scene.addIK. */
+export interface IK {
+  readonly type: 'twoBone' | 'aim';
+}
+
 /** WGSL a material runs on its surface before it is lit: engine.createSurfaceHook. */
 export interface SurfaceHook {
   readonly source: string;
@@ -568,6 +577,10 @@ export class Scene {
   remove(node: Node): void;
   update(): number;
   advance(dt: number): void;
+  /** A limb reaching for a point, or a bone turned to look at one: see docs/API.md. */
+  addIK(options: IKOptions): IK;
+  setIK(ik: IK, changes: Partial<IKOptions>): void;
+  removeIK(ik: IK): void;
   /** Seconds advance() has moved the scene on: the clock surface hooks read. */
   time: number;
   bounds(outMin: Vec3, outMax: Vec3): boolean;

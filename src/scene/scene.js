@@ -9,6 +9,7 @@
 // every frame to update bounds and cull. The Node objects users hold are
 // cursors over this (see node.js), not entries in it.
 
+import { ikRecord, solveIK, ikAlive, releaseIK } from './ik.js';
 import { assertFinite } from '../core/assert.js';
 import { HandleAllocator, handleIndex, NULL_HANDLE } from '../core/handle.js';
 import { TransformStore, NO_PARENT } from './transform.js';
@@ -865,6 +866,8 @@ export class Scene {
     this.trails = new Map();
     /** Outlines (node.setOutline), by node slot: { color, width, through, key }. */
     this.outlines = new Map();
+    /** Inverse kinematics (addIK), solved in this order at update(). */
+    this._ik = [];
     /** Gaussian splat captures (see addSplats), by the entity each hangs off. */
     this.splats = new Map();
     /** Decals (see addDecal), by the entity each hangs off, in the order added. */
@@ -1269,6 +1272,40 @@ export class Scene {
     }
     const slot = handleIndex(node.entity);
     this._ownTint(slot, at, color[0], color[1], color[2]);
+  }
+
+  /**
+   * A limb reaching for a point ('twoBone': a foot on uneven ground, a hand
+   * on a door) or a bone turned to look at one ('aim': a head, a turret).
+   * Solved at update() over whatever the animation posed. Returns a handle
+   * for setIK and removeIK.
+   */
+  addIK(options = {}) {
+    checkOptions('addIK', options);
+    const record = ikRecord(this, options);
+    this._ik.push(record);
+    this.changes++;
+    return record;
+  }
+
+  /** Change an IK's options: the same names addIK takes. Each frame's new target goes here. */
+  setIK(handle, changes) {
+    checkOptions('setIK', changes);
+    if (!this._ik.includes(handle)) throw new Error('setIK: not an IK of this scene: addIK makes one, removeIK ends it');
+    const next = ikRecord(this, { ...handle.options, ...changes }, 'setIK');
+    const sameBones = next.bones.every((b, k) => b.entity === handle.bones[k]?.entity);
+    if (!sameBones) releaseIK(this.transforms, handle);
+    Object.assign(handle, next, sameBones ? { input: handle.input, wrote: handle.wrote } : {});
+    this.changes++;
+  }
+
+  /** End an IK. Its bones go back to the pose under it. */
+  removeIK(handle) {
+    const k = this._ik.indexOf(handle);
+    if (k < 0) return;
+    this._ik.splice(k, 1);
+    releaseIK(this.transforms, handle);
+    this.changes++;
   }
 
   /** node.setOutline: a look, or null for none. */
@@ -2548,7 +2585,13 @@ export class Scene {
    * one it is the same code on this thread. Identical results either way.
    */
   update(jobs = null) {
-    const recomposed = jobs?.parallel ? this.transforms.updateParallel(jobs) : this.transforms.update();
+    let recomposed = jobs?.parallel ? this.transforms.updateParallel(jobs) : this.transforms.update();
+    // Inverse kinematics over the pose just composed, each composing what it turned for the next.
+    for (let k = 0; k < this._ik.length; k++) {
+      const record = this._ik[k];
+      if (!ikAlive(record)) { this._ik.splice(k--, 1); continue; }
+      if (solveIK(this.transforms, record)) recomposed += this.transforms.update();
+    }
     if (this._visibilityDirty) this._refreshVisibility();
     if (this._tintDirty) this._refreshTints();
     if (this.reflectionProbes.length > 0) this._placeProbes();

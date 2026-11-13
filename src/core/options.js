@@ -35,6 +35,8 @@ export const OPTIONS = {
   autoExposure: ['min', 'max', 'brighten', 'darken'],
   dynamicResolution: ['target', 'min', 'max'],
   setOutline: ['width', 'through'],
+  addIK: ['type', 'end', 'target', 'pole', 'weight', 'node', 'axis', 'limit'],
+  setIK: ['type', 'end', 'target', 'pole', 'weight', 'node', 'axis', 'limit'],
   fog: ['visibility', 'height', 'scaleHeight', 'albedo'],
   dof: ['focusDistance', 'fStop', 'sensorHeight'],
   Scene: ['capacity', 'renderableCapacity', 'lightCapacity'],

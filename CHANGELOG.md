@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they cover finds the edges and fades the last half pixel. `through` shows the whole outline through
   what is in front. Nothing is drawn without outlines. `node.outline` reads it back;
   `engine.stats.outlined` counts the meshes.
+- **Inverse kinematics: `scene.addIK(options)`**, with `setIK` and `removeIK`. `'twoBone'`: a limb
+  turned so its end lands on a target, solved exactly by the law of cosines, its middle joint bending
+  toward an optional pole, straightening toward a target out of reach. `'aim'`: a bone turned so an
+  axis of its own points at a target, within a `limit`. Targets and poles are points or nodes, which
+  are followed. Solved at `scene.update` over whatever the animation posed, each starting from the
+  pose underneath, so a `weight` below 1 holds and an IK with nothing new to do moves nothing.
 - **Trails: `scene.addTrail(options)`**, a ribbon behind a moving node: a sword's swing, a shell's
   streak, a contrail. Width and colour from head to tail (`widthEnd`, `colorEnd`), a texture or a
   soft edge, additive or alpha, `emitting` to stop adding to it. Sampled once a frame where its node
