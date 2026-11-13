@@ -391,8 +391,14 @@ export function updateSkinBounds(skins, world) {
  * Returns how many boxes this CHANGED, not how many are skinned: a character
  * standing still changes none, and every consumer of the count -- the scene's
  * extent, the draw data, the shadow casters' boxes -- then has nothing to redo.
+ *
+ * A skinned renderable that is also morphed has its box grown by the morph's
+ * padding (applyMorphBounds, `pads`, the padding last applied): that grown box
+ * is what it should be, so that is what this compares against. Compared with
+ * the bare skin box, a still character with a face showing counted as changed
+ * every frame, and every consumer above redid its work for nothing.
  */
-export function applySkinBounds(count, renderableSkin, skins, worldMin, worldMax) {
+export function applySkinBounds(count, renderableSkin, skins, worldMin, worldMax, renderableMorph = null, pads = null) {
   let applied = 0;
   for (let i = 0; i < count; i++) {
     const s = renderableSkin[i];
@@ -402,14 +408,18 @@ export function applySkinBounds(count, renderableSkin, skins, worldMin, worldMax
 
     const o = i * 3;
     const lo = skin.boundsMin, hi = skin.boundsMax;
-    if (worldMin[o] === lo[0] && worldMin[o + 1] === lo[1] && worldMin[o + 2] === lo[2]
-      && worldMax[o] === hi[0] && worldMax[o + 1] === hi[1] && worldMax[o + 2] === hi[2]) continue;
-    worldMin[o] = lo[0];
-    worldMin[o + 1] = lo[1];
-    worldMin[o + 2] = lo[2];
-    worldMax[o] = hi[0];
-    worldMax[o + 1] = hi[1];
-    worldMax[o + 2] = hi[2];
+    const pad = renderableMorph !== null && renderableMorph[i] >= 0 ? pads[i] : 0;
+    // As the Float32Array stores them, so equal means equal.
+    const x0 = Math.fround(lo[0] - pad), y0 = Math.fround(lo[1] - pad), z0 = Math.fround(lo[2] - pad);
+    const x1 = Math.fround(hi[0] + pad), y1 = Math.fround(hi[1] + pad), z1 = Math.fround(hi[2] + pad);
+    if (worldMin[o] === x0 && worldMin[o + 1] === y0 && worldMin[o + 2] === z0
+      && worldMax[o] === x1 && worldMax[o + 1] === y1 && worldMax[o + 2] === z1) continue;
+    worldMin[o] = x0;
+    worldMin[o + 1] = y0;
+    worldMin[o + 2] = z0;
+    worldMax[o] = x1;
+    worldMax[o + 1] = y1;
+    worldMax[o + 2] = z1;
     applied++;
   }
   return applied;
@@ -479,7 +489,10 @@ export function applyMorphBounds(
     const extent = extents[i];
     if (extent === null || extent === undefined) continue;
 
-    const pad = morphPadding(morphs[m].weights, extent);
+    // Rounded as `lastPad`, a Float32Array, keeps it: unrounded, a weight such
+    // as 0.3 never compared equal to what was stored, and every morphed mesh
+    // with a weight counted as changed every frame, still or not.
+    const pad = Math.fround(morphPadding(morphs[m].weights, extent));
     const was = lastPad[i];
     if (pad !== was) {
       lastPad[i] = pad;
@@ -493,13 +506,15 @@ export function applyMorphBounds(
     if (pad === 0 && was === 0) continue;
 
     const o = i * 3;
-    // In place only on a box applySkinBounds rebuilt this frame. A skin with
-    // no bounds of its own leaves last frame's box there -- already padded --
-    // and growing it again every frame is what this used to do. Such a
-    // renderable's box is its transformed local one, so it is rebuilt that way.
-    if (renderableSkin[i] >= 0 && skins[renderableSkin[i]]?.hasBounds) {
-      worldMin[o] -= pad; worldMin[o + 1] -= pad; worldMin[o + 2] -= pad;
-      worldMax[o] += pad; worldMax[o + 1] += pad; worldMax[o + 2] += pad;
+    // A skinned box is the skin's own grown by the pad, written whole, never
+    // grown in place: applySkinBounds leaves it already grown by last frame's
+    // pad, and in place it would grow twice. A skin with no bounds of its own
+    // has a box that is its transformed local one, so it is rebuilt that way.
+    const skin = renderableSkin[i] >= 0 ? skins[renderableSkin[i]] : null;
+    if (skin?.hasBounds) {
+      const lo = skin.boundsMin, hi = skin.boundsMax;
+      worldMin[o] = lo[0] - pad; worldMin[o + 1] = lo[1] - pad; worldMin[o + 2] = lo[2] - pad;
+      worldMax[o] = hi[0] + pad; worldMax[o + 1] = hi[1] + pad; worldMax[o + 2] = hi[2] + pad;
     } else {
       PADDED_MIN[0] = localMin[o] - pad;
       PADDED_MIN[1] = localMin[o + 1] - pad;

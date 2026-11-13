@@ -2707,6 +2707,7 @@ export class Scene {
       updateSkinBounds(this.skins, this.transforms.world);
       applySkinBounds(
         this.renderableCount, this.renderableSkin, this.skins, this.worldMin, this.worldMax,
+        this.renderableMorph, this.renderableMorphPad,
       );
     }
     if (this.morphs.length > 0) this.applyMorphBounds();

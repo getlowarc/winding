@@ -1207,7 +1207,9 @@ export class Renderer {
     let skinned = 0;
     if (scene.skins.length > 0) {
       updateSkinBounds(scene.skins, scene.transforms.world);
-      skinned = applySkinBounds(count, scene.renderableSkin, scene.skins, scene.worldMin, scene.worldMax);
+      skinned = applySkinBounds(
+        count, scene.renderableSkin, scene.skins, scene.worldMin, scene.worldMax, scene.renderableMorph, scene.renderableMorphPad,
+      );
     }
 
     // And morphed ones get theirs grown, by how far their weights can carry a

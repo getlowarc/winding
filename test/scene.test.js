@@ -9,7 +9,7 @@ import { Camera } from '../src/scene/camera.js';
 import { quatCreate, quatSetAxisAngle } from '../src/core/math/quat.js';
 import { vec3Create } from '../src/core/math/vec3.js';
 import { Scene } from '../src/scene/scene.js';
-import { updateWorldBounds, applyMorphBounds, saveBoxes, moveUnion } from '../src/scene/bounds.js';
+import { updateWorldBounds, applySkinBounds, applyMorphBounds, saveBoxes, moveUnion } from '../src/scene/bounds.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -795,11 +795,40 @@ test('a skinned and morphed renderable gets both corrections', () => {
     [{ weights: Float32Array.from([0.5]) }], [Float32Array.from([4])],
     new Float32Array(3), new Float32Array(3), min, max,
     new Float32Array(16), Uint32Array.from([0]), new Float32Array(1),
-    [{ hasBounds: true }],                      // applySkinBounds built this box
+    // The skin's box, as applySkinBounds built it.
+    [{ hasBounds: true, boundsMin: Float32Array.of(-1, -1, -1), boundsMax: Float32Array.of(1, 1, 1) }],
   );
   assert.equal(changed, 1);
   close(min[0], -3, EPS, 'grown by 0.5 * 4');
   close(max[2], 3, EPS, 'grown by 0.5 * 4');
+});
+
+test('a still character, skinned and morphed, and a still morphed mesh change nothing after the first frame', () => {
+  // The skin pass compared its box with the bare skin box while the morph pass
+  // had grown it, and the pad, a double, never equalled the Float32Array that
+  // keeps it: both counted a change every frame, standing still, at weight 0.3.
+  const skin = { hasBounds: true, boundsMin: Float32Array.of(-1, 0, -1), boundsMax: Float32Array.of(1, 2, 1) };
+  const renderableSkin = Int32Array.of(0, -1), renderableMorph = Int32Array.of(0, 1);
+  const morphs = [{ weights: Float32Array.of(0.3) }, { weights: Float32Array.of(0.3) }];
+  const extents = [Float32Array.of(0.7), Float32Array.of(0.7)];
+  const localMin = Float32Array.of(0, 0, 0, -1, -1, -1), localMax = Float32Array.of(0, 0, 0, 1, 1, 1);
+  const worldMin = new Float32Array(6), worldMax = new Float32Array(6), pads = new Float32Array(2);
+  const identity = Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+  const frame = () => [
+    applySkinBounds(2, renderableSkin, [skin], worldMin, worldMax, renderableMorph, pads),
+    applyMorphBounds(2, renderableMorph, renderableSkin, morphs, extents, localMin, localMax, worldMin, worldMax,
+      identity, Int32Array.of(0, 0), pads, [skin]),
+  ];
+  assert.deepEqual(frame(), [1, 2], 'the first frame builds both');
+  const box = Array.from(worldMin.subarray(0, 3));
+  assert.deepEqual(frame(), [0, 0], 'then nothing has changed');
+  assert.deepEqual(frame(), [0, 0], 'and still nothing');
+  assert.deepEqual(Array.from(worldMin.subarray(0, 3)), box, 'the box is not grown again');
+  close(worldMin[0], -1 - 0.3 * 0.7, 1e-6, 'the skin box grown by the pad, once');
+  // A weight that does change still counts, and grows the box from the skin's, not from last frame's.
+  morphs[0].weights[0] = 0.6;
+  assert.deepEqual(frame(), [0, 1], 'the pad changed');
+  close(worldMin[0], -1 - 0.6 * 0.7, 1e-6, 'grown by the new pad, from the skin box');
 });
 
 test('a skinned and morphed renderable whose skin has no bounds does not grow every frame', () => {
