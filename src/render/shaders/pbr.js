@@ -45,7 +45,8 @@ struct Frame {
   fogAlbedo      : vec4<f32>,               // 224
   fogLight       : vec4<f32>,               // 240  the directional lights' inscattered radiance
   // x = reflection probes to consult; y = TAA's frame, 0 without it; z = the
-  // material textures' mip bias: sharper under TAA, whose blend softens them.
+  // material textures' mip bias: sharper under TAA, whose blend softens them;
+  // w = the scene's time, in seconds, for surface hooks.
   probeInfo      : vec4<f32>,               // 256
   // Written once, not per frame: the sheen albedo table (render/sheen.js),
   // four entries a vec4 because a uniform array's stride is 16.
@@ -58,11 +59,14 @@ const KIND = Object.fromEntries(EXTENSION_TEXTURES.map(({ slot }, k) => [slot, `
 
 /**
  * The forward shader, for a device that binds `extensionSlots` extension
- * textures a material (see extensionSlotCount in material.js).
+ * textures a material (see extensionSlotCount in material.js). With `hook` (a
+ * SurfaceHook, engine.createSurfaceHook), its WGSL is compiled in and called
+ * on every surface once its material is sampled, before anything is lit.
  */
-export const pbrShader = (extensionSlots) => /* wgsl */ `
+export const pbrShader = (extensionSlots, hook = null) => /* wgsl */ `
 ${BRDF_WGSL}
 ${FOG_WGSL}
+${hook ? `${HOOKED_SURFACE_WGSL}\n${hook.source}` : ''}
 
 // Pipeline-overridable constant: set per variant, so the MASK variant gets its
 // own compiled pipeline and opaque geometry never pays for the discard.
@@ -163,7 +167,9 @@ struct DrawData {
   // 16. Packed because splitting them would push this struct to 112 bytes for
   // twelve bits; see packMorphCountStride in render/morph.js.
   morphCount    : u32,            //  88
-};                                // 96: the mat4x4 aligns the struct to 16
+  // The node's two values for a surface hook (node.setHookParams), as halves.
+  hookParams    : u32,            //  92
+};                                // 96
 
 /** The only thing still bound per draw: where this batch's slice begins. */
 struct Batch {
@@ -248,6 +254,7 @@ struct VertexOut {
   @location(7) @interpolate(flat) modelScale : vec3<f32>,
   // The node's glow, added to its emission. Its tint rides in color.
   @location(8) @interpolate(flat) glow : vec3<f32>,
+  ${hook ? '@location(9) @interpolate(flat) hookParams : vec2<f32>,' : ''}
 };
 
 /** A draw's tint (node.setTint), from its words: 1 where none was set. */
@@ -429,6 +436,7 @@ fn shadeVertex(
   // COLOR_0 multiplies the base colour, so the tint does it here, once a vertex.
   out.color = color * vec4<f32>(tintOf(draw), 1.0);
   out.glow = glowOf(draw);
+  ${hook ? 'out.hookParams = unpack2x16float(draw.hookParams);' : ''}
   return out;
 }
 
@@ -1313,6 +1321,7 @@ fn vsSkinned(
   out.uv1 = uv1;
   out.color = color * vec4<f32>(tintOf(draw), 1.0);
   out.glow = glowOf(draw);
+  ${hook ? 'out.hookParams = unpack2x16float(draw.hookParams);' : ''}
   return out;
 }
 
@@ -1349,19 +1358,10 @@ fn shadeSurface(v : VertexOut, frontFacing : bool) -> vec4<f32> {
 
   // COLOR_0 multiplies base colour, per the spec. An asset without it carries
   // opaque white, so this costs those nothing and needs no variant.
-  let sampled = textureSampleBias(baseColorMap, surfSampler, uvBaseColor, frame.probeInfo.z)
+  var sampled = textureSampleBias(baseColorMap, surfSampler, uvBaseColor, frame.probeInfo.z)
     * material.baseColor * v.color;
 
-  if (USE_ALPHA_MASK) {
-    if (sampled.a < material.alphaCutoff) { discard; }
-  }
-
-  // KHR_materials_unlit: the base colour is the whole answer -- no lights, no
-  // environment, no emission. No ambient either, so occlusion leaves it be.
-  if (material.unlit > 0.5) {
-    ambientOut = vec3<f32>(0.0);
-    return vec4<f32>(min(sampled.rgb + v.glow, vec3<f32>(65504.0)), sampled.a);
-  }
+  ${hook ? '' : MASK_AND_UNLIT}
 
   // The geometric normal is flipped for a back face. A double-sided material
   // draws both windings from one set of vertices, so a back face arrives with
@@ -1394,13 +1394,39 @@ fn shadeSurface(v : VertexOut, frontFacing : bool) -> vec4<f32> {
     tangentNormal = vec3<f32>(untransformNormal(4u, tangentNormal.xy), tangentNormal.z);
     n = mapNormal(v, geometric, facing, tangentNormal);
   }
-  let roughness = clamp(mr.g * material.roughness, 0.045, 1.0);
-  let metallic  = clamp(mr.b * material.emissive.w, 0.0, 1.0);
+  var roughness = mr.g * material.roughness;
+  var metallic = mr.b * material.emissive.w;
   // The spec's blend: strength 0 disables the map entirely rather than
   // multiplying ambient by zero.
-  let occlusion = 1.0 + material.occlusionStrength * (occlusionSample - 1.0);
-
+  var occlusion = 1.0 + material.occlusionStrength * (occlusionSample - 1.0);
+  var emissive = material.emissive.rgb;
+  if ((uvSets & 256u) != 0u) { emissive = emissive * textureSampleBias(emissiveMap, surfSampler, transformUV(4u, select(v.uv, v.uv1, (uvSets & 16u) != 0u)), frame.probeInfo.z).rgb; }
   let view = normalize(frame.cameraPosition.xyz - v.world);
+  ${hook ? `
+  // The surface hook: the material as sampled, for it to change.
+  var hooked : HookedSurface;
+  hooked.baseColor = sampled;
+  hooked.emissive = emissive;
+  hooked.normal = n;
+  hooked.roughness = roughness;
+  hooked.metallic = metallic;
+  hooked.occlusion = occlusion;
+  hooked.position = v.world;
+  hooked.view = view;
+  hooked.uv = v.uv;
+  hooked.uv1 = v.uv1;
+  hooked.params = v.hookParams;
+  hooked.time = frame.probeInfo.w;
+  surface(&hooked);
+  sampled = hooked.baseColor;
+  emissive = hooked.emissive;
+  n = normalize(hooked.normal);
+  roughness = hooked.roughness;
+  metallic = hooked.metallic;
+  occlusion = hooked.occlusion;
+  ${MASK_AND_UNLIT}` : ''}
+  roughness = clamp(roughness, 0.045, 1.0);
+  metallic = clamp(metallic, 0.0, 1.0);
   let NoV = max(dot(n, view), 1e-4);
 
   // View-space depth, shared by cascade selection and the cluster lookup.
@@ -1659,8 +1685,6 @@ fn shadeSurface(v : VertexOut, frontFacing : bool) -> vec4<f32> {
   ambientOut = min(ambient, vec3<f32>(65504.0));
 
   // A coat dims what shines through it as it dims everything else beneath.
-  var emissive = material.emissive.rgb;
-  if ((uvSets & 256u) != 0u) { emissive = emissive * textureSampleBias(emissiveMap, surfSampler, transformUV(4u, select(v.uv, v.uv1, (uvSets & 16u) != 0u)), frame.probeInfo.z).rgb; }
   if (EXTENSIONS) { emissive = emissive * (1.0 - s.coat * s.coatFresnel); }
   emissive = emissive + v.glow;
 
@@ -1771,6 +1795,42 @@ fn fsOIT(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> OitOut {
   out.reveal = colour.a;
   return out;
 }
+`;
+
+/**
+ * The alpha cut-out and KHR_materials_unlit, which a surface hook comes
+ * before: what it does to the alpha decides the cut, and an unlit surface
+ * is its base colour as the hook left it.
+ */
+const MASK_AND_UNLIT = /* wgsl */ `
+  if (USE_ALPHA_MASK) {
+    if (sampled.a < material.alphaCutoff) { discard; }
+  }
+
+  // KHR_materials_unlit: the base colour is the whole answer -- no lights, no
+  // environment, no emission. No ambient either, so occlusion leaves it be.
+  if (material.unlit > 0.5) {
+    ambientOut = vec3<f32>(0.0);
+    return vec4<f32>(min(sampled.rgb + v.glow, vec3<f32>(65504.0)), sampled.a);
+  }
+`;
+
+/** What a surface hook is handed and gives back: see engine.createSurfaceHook in docs/API.md. */
+export const HOOKED_SURFACE_WGSL = /* wgsl */ `
+struct HookedSurface {
+  baseColor : vec4<f32>,
+  emissive  : vec3<f32>,
+  normal    : vec3<f32>,
+  roughness : f32,
+  metallic  : f32,
+  occlusion : f32,
+  position  : vec3<f32>,
+  view      : vec3<f32>,
+  uv        : vec2<f32>,
+  uv1       : vec2<f32>,
+  params    : vec2<f32>,
+  time      : f32,
+};
 `;
 
 /** Frame uniform size in bytes. Matches the struct above. */

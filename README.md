@@ -368,6 +368,13 @@ straight from a physics engine -- and moved to another parent where it stands. I
 batch, so a pool of bullets or an army in two colours costs what one plain copy does. The clock
 slows or stops the world for a hit-stop or a pause ([`timeScale`](docs/API.md#engine-clock)).
 
+**Your own surface code.** A [surface hook](docs/API.md#engine-createsurfacehook) is a WGSL function
+a model's materials run once they are sampled and before they are lit: it can change their colour,
+emission, normal, roughness and metal, or cut the pixel away -- a dissolve, a shield's rim, flat
+toon colours, a texture scrolled by the scene's time. Each node hands it two numbers of its own
+([`setHookParams`](docs/API.md#node-sethookparams)), so one hook dissolves a hundred units, each at
+its own point, still in one draw.
+
 **Sprites, text, particles, decals and reflection probes**, each a node:
 [sprites](docs/API.md#scene-addsprite) that face the camera or stand upright;
 [text](docs/API.md#scene-addtext) in any CSS font, sharp at any size as a distance field, with

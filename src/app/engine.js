@@ -27,7 +27,7 @@ import { parseHDR } from '../render/hdr.js';
 import { Renderer, RenderTarget } from '../render/renderer.js';
 import { Splats } from '../render/splats.js';
 import { openSurface } from '../render/shadows.js';
-import { ALPHA_OPAQUE } from '../render/material.js';
+import { ALPHA_OPAQUE, SurfaceHook } from '../render/material.js';
 import { chunkBoxes } from '../scene/bounds.js';
 import { readSplats } from '../scene/splats.js';
 import { GLTFTextures, ktx2Texture } from '../render/textures.js';
@@ -385,6 +385,26 @@ export class Winding {
   }
 
   /**
+   * WGSL run on a surface once its material is sampled, before it is lit:
+   * `fn surface(s : ptr<function, HookedSurface>)`, changing what it likes
+   * of the colour, emission, normal, roughness, metallic and occlusion, or
+   * discarding. For the materials of a load({ hook }) or a createMesh
+   * material's hook. Compiled here, so a mistake throws here, with the
+   * compiler's message. See docs/API.md for HookedSurface.
+   */
+  async createSurfaceHook(wgsl) {
+    this._assertAlive('createSurfaceHook');
+    if (typeof wgsl !== 'string') throw new TypeError('createSurfaceHook: the hook is WGSL, as a string');
+    if (!/\bfn\s+surface\s*\(/.test(wgsl)) {
+      throw new Error('createSurfaceHook: the WGSL needs fn surface(s : ptr<function, HookedSurface>)');
+    }
+    const hook = this.renderer.materials.addHook(wgsl);
+    await this.renderer.hookShader(hook.index, false);
+    this._assertAlive('createSurfaceHook');
+    return hook;
+  }
+
+  /**
    * A font for scene.addText: any CSS font the page can use, rasterised as a
    * distance field at the size it names. Waits for a web font to load.
    *
@@ -640,6 +660,7 @@ export class Winding {
       }
       model.materials.forEach((material, m) => {
         const registry = this.renderer.materials;
+        if (options.hook !== undefined && into === null) material.hook = this._hookFor(options.hook, material) ?? undefined;
         const bound = textures.texturesFor(material);
         asset.materialIds.push(animated.has(m) ? registry.register(material, bound) : registry.share(material, bound));
       });
@@ -792,7 +813,18 @@ export class Winding {
     this._assertAlive('createMesh');
     checkOptions('createMesh', options);
     checkOptions('createMesh', options.material, 'material.', 'createMesh material');
-    return this.load(meshGLB(options));
+    const hook = options.material?.hook;
+    return this.load(meshGLB(options), hook === undefined ? {} : { hook });
+  }
+
+  /** load()'s `hook` for one material: a hook, or a function of the material's name giving one or null. */
+  _hookFor(option, material) {
+    const hook = typeof option === 'function' ? option(material.name ?? '') : option;
+    if (hook === null || hook === undefined) return null;
+    if (!(hook instanceof SurfaceHook) || this.renderer.materials.hooks[hook.index] !== hook) {
+      throw new TypeError('load: hook must be what this engine\'s createSurfaceHook returned');
+    }
+    return hook;
   }
 
   /** glTF lets a primitive have no material; the spec's default is a white dielectric. */

@@ -62,7 +62,7 @@ Every call, setting and entry, A to Z by its name.
 
 **B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst)
 
-**C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget)
+**C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`engine.createSurfaceHook()`](#engine-createsurfacehook) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget)
 
 **D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox)
 
@@ -72,7 +72,7 @@ Every call, setting and entry, A to Z by its name.
 
 **G** &nbsp; [`node.glow`](#node-glow) · [`engine.gpu`](#engine-gpu) · [`GPU lost`](#device-lost) · [`engine.grading`](#engine-grading) · [`engine.renderer.post.grading`](#post-grading)
 
-**H** &nbsp; [`HUD`](#view2d-hud)
+**H** &nbsp; [`node.hookParams`](#node-hookparams) · [`HUD`](#view2d-hud)
 
 **I** &nbsp; [`engine.invalidate()`](#engine-invalidate) · [`camera.is2D`](#camera2d-is2d)
 
@@ -92,9 +92,9 @@ Every call, setting and entry, A to Z by its name.
 
 **R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run)
 
-**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera)
+**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera)
 
-**T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof)
+**T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof)
 
 **U** &nbsp; [`engine.unload()`](#engine-unload) · [`scene.update()`](#scene-update) · [`camera.update()`](#camera2d-update) · [`camera.update()`](#camera-update) · [`orbit.update()`](#orbitcontroller-update) · [`overlay.update()`](#statsoverlay-update)
 
@@ -217,6 +217,7 @@ Loads a `.glb` or `.gltf` and returns a model that `scene.add()` takes. All the 
 | `retainGeometry` | `false` | Keep positions and indices (and skin weights and morph deltas) on the CPU, so `scene.raycast` hits triangles instead of bounding boxes. Costs about 12 bytes a vertex plus 4 an index for as long as the model lives. |
 | `baseURL` | the URL of `source` | What relative buffer and image URLs in a `.gltf` resolve against. Bytes without a `baseURL` cannot fetch anything. |
 | `fetch` | `globalThis.fetch` | Replaces `fetch` for every download: `source` when it is a URL, and the buffers and images the file names. Use it to refuse, rewrite or restrict URLs, above all from files you did not write. Every loader that downloads takes this option. |
+| `hook` | none | A [`SurfaceHook`](#engine-createsurfacehook) for every material of the model, or a function from a material's name to one or `null`, for some of them. |
 
 Returns: a model object: `{ nodes, roots, meshes, materials, materialIds, animations, skins, lights, cameras, textures, source, engine }`. Pass the whole object to `scene.add()`.
 Throws: `'load: <url> returned <status>'` for a failed download; `'load: this engine was destroyed'` if the engine is destroyed before or during the load; errors from the glTF parser (a malformed file, or one past the device's buffer limit). A failed load frees everything it had made.
@@ -265,6 +266,7 @@ A mesh made from arrays: terrain from a noise field, a map from a generator, a p
 | `roughness` | `1` | 0 is a mirror, 1 matte. |
 | `emissive` | `[0, 0, 0]` | Light it gives off, linear r, g, b, 0 or more. |
 | `doubleSided` | `false` | Draw and light both sides of each triangle. |
+| `hook` | none | A [`SurfaceHook`](#engine-createsurfacehook) the surface runs. |
 
 Returns: a model, as `engine.load` returns.
 
@@ -290,6 +292,47 @@ scene.add(await engine.createMesh({ positions, colors, indices }));
 ```
 
 Notes: the arrays are written into a glTF file and loaded, so a mesh made this way is what a loaded one is: shaded, culled, merged with others drawn alone, and its pipelines built before it is handed back. It is blended, with its own draw order, if its colour's alpha or any vertex's is below 1. The arrays are copied; changing them afterwards changes nothing, so to reshape a mesh make it again and unload the old one. After a lost GPU device it is rebuilt from that copy ([When the GPU is lost](#device-lost)).
+
+<a id="engine-createsurfacehook"></a>
+### `engine.createSurfaceHook(wgsl)` → `Promise<SurfaceHook>`
+
+Your own WGSL, run on a surface once its material is sampled and before it is lit: a dissolve, a shield's rim, a force field's ripple, a toon's flat colours, a texture scrolled by time. Give it to the materials of a model with [`load`](#engine-load)'s `hook` option, or to a mesh's with [`createMesh`](#engine-createmesh)'s `material.hook`.
+
+`wgsl` defines `fn surface(s : ptr<function, HookedSurface>)`, and any helpers it calls. It changes what it likes of the first six fields, or `discard`s the pixel; the rest are for it to read.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `baseColor` | `vec4<f32>` | Base colour and alpha, linear, with the node's tint and the vertex colour already in. On a `MASK` material the alpha is then tested against the cutoff. |
+| `emissive` | `vec3<f32>` | The material's own emission. The node's glow is added after. |
+| `normal` | `vec3<f32>` | World-space surface normal, normal map applied, facing the side seen. Normalized after the hook. |
+| `roughness` | `f32` | 0 to 1; clamped after. |
+| `metallic` | `f32` | 0 to 1; clamped after. |
+| `occlusion` | `f32` | The ambient light kept, 0 to 1. |
+| `position` | `vec3<f32>` | World position. |
+| `view` | `vec3<f32>` | Unit vector to the camera. |
+| `uv`, `uv1` | `vec2<f32>` | The two texture coordinate sets, as authored. |
+| `params` | `vec2<f32>` | The node's two numbers: [`node.setHookParams`](#node-sethookparams). |
+| `time` | `f32` | [`scene.time`](#scene-time), seconds. |
+
+Returns: a `SurfaceHook`, which this engine's loads accept.
+
+Throws: `'createSurfaceHook: the hook is WGSL, as a string'`; `'createSurfaceHook: the WGSL needs fn surface(s : ptr<function, HookedSurface>)'`; the WGSL compiler's message, with the line, when the hook does not compile; `RangeError` past 511 hooks.
+
+```js
+// Dissolve: holes grow from a noise pattern as params.x goes 0 to 1, edged with fire.
+const dissolve = await engine.createSurfaceHook(`
+  fn hash(p : vec3<f32>) -> f32 { return fract(sin(dot(p, vec3<f32>(12.9898, 78.233, 37.719))) * 43758.5453); }
+  fn surface(s : ptr<function, HookedSurface>) {
+    let n = hash(floor((*s).position * 20.0));
+    if (n < (*s).params.x) { discard; }
+    (*s).emissive += vec3<f32>(4.0, 1.2, 0.2) * step(n, (*s).params.x + 0.05) * step(0.001, (*s).params.x);
+  }`);
+const soldier = await engine.load('soldier.glb', { hook: dissolve });
+const unit = scene.add(soldier);
+unit.setHookParams(0.4);   // 40% gone
+```
+
+Notes: each hook is its own shader, so its own pipelines: a material with a hook never shares a draw with one without, and is never merged into a group (see [`stats.draws`](#engine-stats)). A hook that `discard`s turns off the early depth test for its draws, as `MASK` does. Shadows do not run the hook: what it cuts away still casts its whole shadow, and a `MASK` material casts by its texture's alpha. On an unlit material only `baseColor` and a `discard` count. The hook is kept with the engine's materials and built again after a lost GPU device. With [`engine.onDemand`](#engine-ondemand), a hook that animates with `time` moves only when a frame is drawn. Names the forward shader uses itself are taken: a helper named after one of them fails to compile, so give helpers your own prefix if in doubt.
 
 <a id="engine-loadtexture"></a>
 ### `engine.loadTexture(source, options)` → `Promise<Texture>`
@@ -1175,6 +1218,13 @@ scene.advance(clock.realDelta);
 engine.renderFrame(scene, camera);
 ```
 
+<a id="scene-time"></a>
+### `scene.time` → `number`
+
+Seconds [`scene.advance`](#scene-advance) has moved the scene on, from 0: the clock [surface hooks](#engine-createsurfacehook) read as `time`, so a paused game's effects pause with it. Writable: set it back to 0 to start over.
+
+Notes: hooks read it as a 32-bit float, which after about four hours of play counts in steps of a millisecond.
+
 <a id="scene-bounds"></a>
 ### `scene.bounds(outMin, outMax)` → `boolean`
 
@@ -1388,6 +1438,24 @@ The tint [`setTint`](#node-settint) gave this node, `[1, 1, 1]` for none: its ow
 ### `node.glow` → `[r, g, b]`
 
 The glow [`setGlow`](#node-setglow) gave this node, `[0, 0, 0]` for none: its own, as `tint` is.
+
+<a id="node-sethookparams"></a>
+### `node.setHookParams(x, y = 0)` → `Node`
+
+Two numbers for a [surface hook](#engine-createsurfacehook) to read, as `params.x` and `params.y`, on every mesh under the node: how far a dissolve has got, when a shield was hit, which way a flag flies. A node without its own takes its parent's; `(0, 0)` is none. Stays in its batch, as a tint does, and costs nothing without a hook to read it.
+
+```js
+unit.setHookParams(dying ? (scene.time - diedAt) / 1.5 : 0);
+```
+
+Throws: `'setHookParams: x and y must be numbers from -65504 to 65504'`; `'setHookParams: this node was removed'`.
+
+Notes: kept as 16-bit floats, as tints are: about three significant figures.
+
+<a id="node-hookparams"></a>
+### `node.hookParams` → `[x, y]`
+
+The numbers [`setHookParams`](#node-sethookparams) gave this node, `[0, 0]` for none: its own, not its parent's. A copy.
 
 <a id="node-visible"></a>
 ### `node.visible` → `boolean`

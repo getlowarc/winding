@@ -130,7 +130,13 @@ export interface MeshOptions {
   uvs?: ArrayLike<number>;
   /** r, g, b or r, g, b, a for each vertex, linear, 0 to 1. */
   colors?: ArrayLike<number>;
-  material?: { color?: Vec4; metallic?: number; roughness?: number; emissive?: Vec3; doubleSided?: boolean };
+  material?: { color?: Vec4; metallic?: number; roughness?: number; emissive?: Vec3; doubleSided?: boolean; hook?: SurfaceHook };
+}
+
+/** WGSL a material runs on its surface before it is lit: engine.createSurfaceHook. */
+export interface SurfaceHook {
+  readonly source: string;
+  readonly index: number;
 }
 
 export interface DeviceLost {
@@ -335,7 +341,13 @@ export class Winding {
   set rhi(value: never);
 
   createScene(options?: CreateSceneOptions): Scene;
-  load(source: string | ArrayBuffer | Uint8Array, options?: { retainGeometry?: boolean; baseURL?: string; fetch?: Fetch }): Promise<Model>;
+  load(source: string | ArrayBuffer | Uint8Array, options?: {
+    retainGeometry?: boolean; baseURL?: string; fetch?: Fetch;
+    /** For every material, or by material name. */
+    hook?: SurfaceHook | ((materialName: string) => SurfaceHook | null);
+  }): Promise<Model>;
+  /** WGSL defining fn surface(s : ptr<function, HookedSurface>); see docs/API.md. */
+  createSurfaceHook(wgsl: string): Promise<SurfaceHook>;
   /** A mesh made from arrays: terrain, a generated map, a prop built in code. */
   createMesh(options: MeshOptions): Promise<Model>;
   loadTexture(source: string | ImageBitmapSource, options?: { srgb?: boolean; pixelated?: boolean; label?: string; fetch?: Fetch }): Promise<Texture>;
@@ -538,6 +550,8 @@ export class Scene {
   remove(node: Node): void;
   update(): number;
   advance(dt: number): void;
+  /** Seconds advance() has moved the scene on: the clock surface hooks read. */
+  time: number;
   bounds(outMin: Vec3, outMax: Vec3): boolean;
   frame(camera: Camera, options?: FrameOptions): boolean;
   raycast(origin: Vec3, direction: Vec3, options?: { maxDistance?: number }): Hit | null;
@@ -650,6 +664,9 @@ export class Node {
   setGlow(color: ArrayLike<number>): this;
   readonly tint: [number, number, number];
   readonly glow: [number, number, number];
+  /** Two numbers for a surface hook: params.x and params.y. */
+  setHookParams(x: number, y?: number): this;
+  readonly hookParams: [number, number];
   worldPosition<T extends Vec3>(out: T): T;
   children(): Node[];
   find(name: string | RegExp): Node | null;

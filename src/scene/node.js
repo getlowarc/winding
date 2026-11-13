@@ -131,6 +131,21 @@ export class Node {
     return this;
   }
 
+  /**
+   * Two numbers for a surface hook to read (engine.createSurfaceHook), as
+   * params.x and params.y: how far a dissolve has got, when a hit landed.
+   * A node without its own takes its parent's; (0, 0) is none.
+   */
+  setHookParams(x, y = 0) {
+    this.scene._setHookParams(this, x, y);
+    return this;
+  }
+
+  /** The params setHookParams gave this node, [0, 0] for none: its own, not its parent's. */
+  get hookParams() {
+    return this.scene._tintOf(this, 6);
+  }
+
   /** The tint setTint gave this node, [1, 1, 1] for none: its own, not its ancestors'. */
   get tint() {
     return this.scene._tintOf(this, 0);

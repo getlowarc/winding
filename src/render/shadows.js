@@ -121,6 +121,7 @@ struct DrawData {
   morphBase     : u32,
   morphWeights  : u32,
   morphCount    : u32,
+  hookParams    : u32,
 };
 
 struct Batch {

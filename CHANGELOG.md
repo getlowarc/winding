@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Surface hooks: your own WGSL on a material's surface.** `engine.createSurfaceHook(wgsl)` compiles
+  a `fn surface(s : ptr<function, HookedSurface>)` into the forward shader, run once a material is
+  sampled and before it is lit. It can change the base colour and alpha, the emission, the normal,
+  roughness, metallic and occlusion, or discard the pixel, reading the world position, the view, both
+  UV sets, the scene's time and two numbers from its node. Give it to a model's materials with
+  `load(source, { hook })` (or by material name), or to a mesh with `createMesh`'s `material.hook`.
+  A mistake in the WGSL throws from `createSurfaceHook`, with the compiler's message.
+- **`node.setHookParams(x, y)` and `node.hookParams`**: those two numbers, which come down the
+  hierarchy from the nearest node that set them. They ride in the draw data's last free word, so
+  setting them keeps the node in its batch.
+- **`scene.time`**: the seconds `scene.advance` has moved the scene on, the clock hooks read.
+
 ### Changed
 
 - **Point and spot shadow maps are 16-bit depth**, half the bytes to clear and write. The harness's
@@ -22,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **More than 32 material pipelines no longer reorder blending.** The blended draws' sort key has 5
+  bits for the pipeline, and a 33rd pipeline id spilled into the depth bits. Not reachable before
+  surface hooks, which add pipelines; the id now wraps within its own field, as the opaque key's does,
+  where it only groups draws.
 - **A still morphed mesh, or a still character both skinned and morphed, no longer costs a moving
   one's frame.** Any morph weight not exact in single precision (0.3, say), or a face on a skinned
   character, made its renderable count as moved every frame: the scene's bounds, its draw data

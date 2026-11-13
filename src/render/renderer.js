@@ -32,7 +32,7 @@ import { handleIndex } from '../core/handle.js';
 import { DIRECTIONAL_FLOATS } from '../scene/scene.js';
 
 import {
-  MaterialRegistry, variantPipelineState, VARIANT_MIRRORED, VARIANT_SKINNED, VARIANT_TRANSMISSIVE, VARIANT_EXTENDED, ALPHA_BLEND, ALPHA_OPAQUE, ALPHA_MASK,
+  MaterialRegistry, variantPipelineState, VARIANT_MIRRORED, VARIANT_SKINNED, VARIANT_TRANSMISSIVE, VARIANT_EXTENDED, VARIANT_HOOK_SHIFT, ALPHA_BLEND, ALPHA_OPAQUE, ALPHA_MASK,
 } from './material.js';
 import { pbrShader, FRAME_BYTES } from './shaders/pbr.js';
 import { SHEEN_ALBEDO } from './sheen.js';
@@ -323,6 +323,9 @@ export class Renderer {
     this._variantSets = new Map([[0, { features: 0, forward: new Map(), oit: new Map(), ready: true }]]);
     this._pipelineByVariant = this._variantSets.get(0).forward;
     this._oitPipelineByVariant = this._variantSets.get(0).oit;
+    /** Surface hooks' modules by hook * 2 + extended, and the compiles under way (hookShader). */
+    this._hookShaders = new Map();
+    this._hookShaderPromises = new Map();
     /**
      * Weighted-blended order-independent transparency, off by default.
      *
@@ -821,15 +824,38 @@ export class Renderer {
     return this._mergedDescriptor(this._pipelineByVariant.get(variant | (mirrored ? VARIANT_MIRRORED : 0)), variant);
   }
 
-  /** The module and layout a variant's pipelines use; see extendedPipelineLayout. */
+  /** The module and layout a variant's pipelines use; see extendedPipelineLayout, and hookShader for a hooked one. */
   _shaderFor(variant) {
-    return (variant & VARIANT_EXTENDED) === 0
-      ? { layout: this.pipelineLayout, shader: this.shader }
-      : { layout: this.extendedPipelineLayout, shader: this.extendedShader };
+    const extended = (variant & VARIANT_EXTENDED) !== 0, hook = variant >> VARIANT_HOOK_SHIFT;
+    const layout = extended ? this.extendedPipelineLayout : this.pipelineLayout;
+    if (hook !== 0) return { layout, shader: this._hookShaders.get(hook * 2 + (extended ? 1 : 0)) };
+    return { layout, shader: extended ? this.extendedShader : this.shader };
+  }
+
+  /**
+   * A surface hook's module, plain or extended: the forward shader with its
+   * WGSL in, compiled the first time a variant needs it. Throws what the WGSL
+   * compiler said, for engine.createSurfaceHook to pass on.
+   */
+  async hookShader(index, extended) {
+    const key = index * 2 + (extended ? 1 : 0);
+    let pending = this._hookShaderPromises.get(key);
+    if (!pending) {
+      const hook = this.materials.hooks[index];
+      pending = compileShader(this.rhi.device, pbrShader(extended ? this.materials.extensionSlots : 0, hook), `pbr-hook-${index}${extended ? '-extended' : ''}.wgsl`, { scoped: true })
+        .then((shader) => { this._hookShaders.set(key, shader); return shader; });
+      this._hookShaderPromises.set(key, pending);
+      pending.catch(() => this._hookShaderPromises.delete(key));
+    }
+    return pending;
   }
 
   async _ensureVariantSet(wanted, features) {
     const set = this._variantSets.get(features);
+    // The hooked variants' modules, before a descriptor names them.
+    await Promise.all([...new Set(wanted.filter((v) => v >> VARIANT_HOOK_SHIFT !== 0)
+      .map((v) => (v >> VARIANT_HOOK_SHIFT) * 2 + ((v & VARIANT_EXTENDED) !== 0 ? 1 : 0)))]
+      .map((key) => this.hookShader(key >> 1, (key & 1) === 1)));
     const pending = [];
     for (const variant of wanted) {
       // Every wanted variant goes to warm(), built or not: one another load
@@ -1472,6 +1498,8 @@ export class Renderer {
     // and averages out; 0, holding it still, without TAA.
     this.frameData[65] = jittered ? (this._taaFrame % 64) + 1 : 0;
     this.frameData[66] = jittered ? TAA_MIP_BIAS : 0;
+    // Surface hooks' clock: the scene's, so a paused game's effects pause with it.
+    this.frameData[67] = scene.time ?? 0;
     rhi.queue.writeBuffer(this.frameBuffer, 0, this.frameData);
     p?.mark('clusters + frame uniform');
 

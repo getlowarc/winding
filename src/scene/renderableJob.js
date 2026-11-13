@@ -46,9 +46,10 @@ export function drawDataRange(columns, start, end) {
     const i = items[k];
     const w = matrixSlot[i] * 16, o = i * DRAW_FLOATS;
     for (let j = 0; j < 16; j++) drawData[o + j] = world[w + j];
-    drawWords[o + 16] = tint[i * 3];
-    drawWords[o + 17] = tint[i * 3 + 1];
-    drawWords[o + 18] = tint[i * 3 + 2];
+    drawWords[o + 16] = tint[i * 4];
+    drawWords[o + 17] = tint[i * 4 + 1];
+    drawWords[o + 18] = tint[i * 4 + 2];
+    drawWords[o + 23] = tint[i * 4 + 3];
     // Zero for anything unskinned, which the unskinned vertex shader never reads anyway.
     const s = skin[i];
     drawWords[o + 19] = s >= 0 ? paletteOffsets[s] : 0;

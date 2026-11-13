@@ -57,6 +57,7 @@ import { createBuffer } from '../rhi/buffer.js';
 import { FRUSTUM_PLANE_COUNT } from '../core/math/frustum.js';
 import { CULL_PHASES, BATCH_BYTES, TABLE_WORDS } from './gpudriven.js';
 import { CHUNK_TRIANGLES } from '../scene/bounds.js';
+import { VARIANT_HOOK_SHIFT } from './material.js';
 
 /** A chunk's record: eight u32s, then its box in its mesh's space, min and max as vec4s. */
 const INFO_WORDS = 16;
@@ -292,6 +293,8 @@ export class MergedDraws {
       if (scene.renderableLodSlot[gpu.batchOrder[gpu.batchFirst[b]]] >= 0) continue;
       // Morphed vertices leave the chunks' boxes, which are the rest pose's.
       if (gpu.batchPrimitive[b].morphCountStride !== 0) continue;
+      // A surface hook may cut holes the depth prepass knows nothing of.
+      if (gpu.materials.variants[gpu.batchMaterial[b]] >> VARIANT_HOOK_SHIFT !== 0) continue;
       const key = gpu.batchMaterial[b] * 2 + gpu.batchMirrored[b];
       let list = byKey.get(key);
       if (!list) byKey.set(key, (list = []));

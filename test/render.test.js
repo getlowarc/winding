@@ -328,9 +328,12 @@ test('keys stay unsigned at the top of the pipeline field', () => {
   assert.equal(key, 0xffffffff);
 });
 
-test('an id too large for its field is caught, not aliased', () => {
-  assert.throws(() => opaqueSortKey(1 << OPAQUE_PIPELINE_BITS, 0, 0), /pipeline id/);
+test('a material id too large for its field is caught; a pipeline id wraps inside its own', () => {
   assert.throws(() => opaqueSortKey(0, 1 << OPAQUE_MATERIAL_BITS, 0), /material id/);
+  // Surface hooks add pipelines past the field: it only groups, so the id
+  // wraps, and never reaches the material or depth bits.
+  assert.equal(opaqueSortKey((1 << OPAQUE_PIPELINE_BITS) + 3, 7, 9), opaqueSortKey(3, 7, 9));
+  assert.equal(transparentSortKey((1 << TRANSPARENT_PIPELINE_BITS) + 2, 5, 100), transparentSortKey(2, 5, 100));
 });
 
 test('depth buckets derive from the reverse-Z curve, far-first for blending', () => {

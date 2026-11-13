@@ -46,14 +46,22 @@ function half(x) {
   return Math.min(sign | ((exp << 10) | (mantissa >> 13)) + ((mantissa >> 12) & 1), sign | 0x7bff);
 }
 
-const TINT_WORDS = new Uint32Array(3);
-const TINT_ONES = new Float32Array(6);
+const TINT_WORDS = new Uint32Array(4);
+const TINT_ONES = new Float32Array(8);
+/** Per node: tint r, g, b, glow r, g, b, and the two hook params (node.setHookParams). */
+const TINT_FLOATS = 8;
+/** Per renderable: the four words its draw data carries. */
+const TINT_STRIDE = 4;
 
-/** A tint and a glow as the three words a renderable's draw data carries: tint - 1 and glow, so all zero is neither. */
+/**
+ * A tint, a glow and the hook params as the four words a renderable's draw
+ * data carries: tint - 1, glow and the params, so all zero is none of them.
+ */
 function tintWords(out, at, t, o) {
   out[at] = half(t[o] - 1) | half(t[o + 1] - 1) << 16;
   out[at + 1] = half(t[o + 2] - 1) | half(t[o + 3]) << 16;
   out[at + 2] = half(t[o + 4]) | half(t[o + 5]) << 16;
+  out[at + 3] = half(t[o + 6]) | half(t[o + 7]) << 16;
 }
 
 /**
@@ -659,7 +667,7 @@ export class Scene {
     this._tintMoved = new Uint8Array(0);
     this._tintDirty = false;
     // Shared, as the boxes and matrix slots are: the workers write draw data from it (renderableJob.js).
-    this.renderableTint = sharedUint32Array(renderableCapacity * 3);
+    this.renderableTint = sharedUint32Array(renderableCapacity * TINT_STRIDE);
     this.tintChanged = [];
     this._hiddenSelfCount = 0;
     this._visibilityDirty = false;
@@ -785,6 +793,8 @@ export class Scene {
      * would draw exactly what the last one did, and skips it.
      */
     this.changes = 0;
+    /** Seconds stepped by advance(), from 0: the clock surface hooks read (frame.probeInfo.w). */
+    this.time = 0;
     /**
      * Bumped when the order sprites and text draw in can change -- one added
      * or removed, or a layer, texture or blend changed -- and a 2D view
@@ -1116,7 +1126,7 @@ export class Scene {
     this.renderableMorphPad = growArray(this.renderableMorphPad, capacity);
     this.renderableLodSlot = growShared(this.renderableLodSlot, capacity, sharedInt32Array);
     this.renderableHidden = growShared(this.renderableHidden, capacity, sharedUint8Array);
-    this.renderableTint = growShared(this.renderableTint, capacity, sharedUint32Array, 3);
+    this.renderableTint = growShared(this.renderableTint, capacity, sharedUint32Array, TINT_STRIDE);
     this.renderableLodSphere = growShared(this.renderableLodSphere, capacity, sharedFloat32Array, 4);
     this.renderableCoverage = growShared(this.renderableCoverage, capacity, sharedFloat32Array, 2);
     this.localMin = growShared(this.localMin, capacity, sharedFloat32Array, 3);
@@ -1217,13 +1227,25 @@ export class Scene {
       throw new Error(`${caller}: a tint has no alpha; a see-through mesh is a blended material's`);
     }
     const slot = handleIndex(node.entity);
+    this._ownTint(slot, at, color[0], color[1], color[2]);
+  }
+
+  /** node.setHookParams. */
+  _setHookParams(node, x, y) {
+    if (!node.alive) throw new Error('setHookParams: this node was removed');
+    if (!(Math.abs(x) <= 65504 && Math.abs(y) <= 65504)) throw new RangeError('setHookParams: x and y must be numbers from -65504 to 65504');
+    this._ownTint(handleIndex(node.entity), 6, x, y);
+  }
+
+  /** A node's own tint, glow or hook params, from `at`, as setTint, setGlow or setHookParams gives them. */
+  _ownTint(slot, at, ...values) {
     this._tintRoom();
     let own = this._tints.get(slot);
-    if (!own) this._tints.set(slot, own = Float32Array.of(1, 1, 1, 0, 0, 0));
-    own[at] = color[0]; own[at + 1] = color[1]; own[at + 2] = color[2];
+    if (!own) this._tints.set(slot, own = Float32Array.of(1, 1, 1, 0, 0, 0, 0, 0));
+    for (let k = 0; k < values.length; k++) own[at + k] = values[k];
     this._tintHas[slot] = 1;
-    // Back to neither: forgotten, so a scene that stops tinting stops paying for it.
-    if (own[0] === 1 && own[1] === 1 && own[2] === 1 && own[3] === 0 && own[4] === 0 && own[5] === 0) {
+    // Back to none: forgotten, so a scene that stops tinting stops paying for it.
+    if (own[0] === 1 && own[1] === 1 && own[2] === 1 && own.every((v, k) => k < 3 || v === 0)) {
       this._tints.delete(slot);
       this._tintHas[slot] = 0;
     }
@@ -1234,6 +1256,7 @@ export class Scene {
   /** A node's own tint (at 0) or glow (at 3), as setTint left it. */
   _tintOf(node, at) {
     const own = node.alive ? this._tints.get(handleIndex(node.entity)) : undefined;
+    if (at === 6) return own ? [own[6], own[7]] : [0, 0];
     return own ? [own[at], own[at + 1], own[at + 2]] : (at === 0 ? [1, 1, 1] : [0, 0, 0]);
   }
 
@@ -1252,14 +1275,16 @@ export class Scene {
     this._tintRoom();
     const t = this.transforms, order = t.order, parent = t.parent;
     const at = this._tintAt, moved = this._tintMoved, has = this._tintHas;
+    const none = (b) => at[b] === 0 && at[b + 1] === 0 && at[b + 2] === 0 && at[b + 3] === 0
+      && at[b + 4] === 0 && at[b + 5] === 0 && at[b + 6] === 0 && at[b + 7] === 0;
     for (let k = 0; k < t.orderCount; k++) {
-      const e = order[k], o = e * 6, p = parent[e];
+      const e = order[k], o = e * TINT_FLOATS, p = parent[e];
       const own = has[e] === 1 ? this._tints.get(e) : null;
-      const q = p === NO_PARENT ? -1 : p * 6;
+      const q = p === NO_PARENT ? -1 : p * TINT_FLOATS;
       // Neither its own nor its parent's: none, which is most nodes, and cheap.
-      if (own === null && (q < 0 || moved[p] === 0) && (q < 0 || (at[q] === 0 && at[q + 1] === 0 && at[q + 2] === 0 && at[q + 3] === 0 && at[q + 4] === 0 && at[q + 5] === 0))) {
-        moved[e] = at[o] !== 0 || at[o + 1] !== 0 || at[o + 2] !== 0 || at[o + 3] !== 0 || at[o + 4] !== 0 || at[o + 5] !== 0 ? 1 : 0;
-        if (moved[e] === 1) at.fill(0, o, o + 6);
+      if (own === null && (q < 0 || moved[p] === 0) && (q < 0 || none(q))) {
+        moved[e] = none(o) ? 0 : 1;
+        if (moved[e] === 1) at.fill(0, o, o + TINT_FLOATS);
         continue;
       }
       let changed = 0;
@@ -1270,6 +1295,13 @@ export class Scene {
         at[o + c] = tint;
         at[o + 3 + c] = glow;
       }
+      // Hook params neither multiply nor add: a node's own, or else its parent's.
+      const mine = own !== null && (own[6] !== 0 || own[7] !== 0);
+      for (let c = 6; c < 8; c++) {
+        const param = mine ? Math.fround(own[c]) : q < 0 ? 0 : at[q + c];
+        if (param !== at[o + c]) changed = 1;
+        at[o + c] = param;
+      }
       moved[e] = changed;
     }
     // Only the renderables of nodes whose tint changed are worked out again.
@@ -1277,11 +1309,11 @@ export class Scene {
     for (let i = 0; i < this.renderableCount; i++) {
       const slot = this.renderableMatrixSlot[i];
       if (moved[slot] === 0) continue;
-      for (let c = 0; c < 6; c++) ones[c] = at[slot * 6 + c] + (c < 3 ? 1 : 0);
+      for (let c = 0; c < TINT_FLOATS; c++) ones[c] = at[slot * TINT_FLOATS + c] + (c < 3 ? 1 : 0);
       tintWords(fresh, 0, ones, 0);
-      const w = i * 3;
-      if (fresh[0] === words[w] && fresh[1] === words[w + 1] && fresh[2] === words[w + 2]) continue;
-      words[w] = fresh[0]; words[w + 1] = fresh[1]; words[w + 2] = fresh[2];
+      const w = i * TINT_STRIDE;
+      if (fresh[0] === words[w] && fresh[1] === words[w + 1] && fresh[2] === words[w + 2] && fresh[3] === words[w + 3]) continue;
+      words[w] = fresh[0]; words[w + 1] = fresh[1]; words[w + 2] = fresh[2]; words[w + 3] = fresh[3];
       this.tintChanged.push(i);
     }
   }
@@ -1291,7 +1323,7 @@ export class Scene {
     const capacity = this.transforms.capacity;
     if (this._tintHas.length >= capacity) return;
     this._tintHas = growArray(this._tintHas, capacity);
-    this._tintAt = growArray(this._tintAt, capacity, 6);
+    this._tintAt = growArray(this._tintAt, capacity, TINT_FLOATS);
     this._tintMoved = growArray(this._tintMoved, capacity);
   }
 
@@ -1408,7 +1440,7 @@ export class Scene {
         if (this.renderableHidden[i] === 1) this.hiddenRenderables--;
         this.renderableHidden[i] = this.renderableHidden[last];
         this.renderableHidden[last] = 0;
-        this.renderableTint.copyWithin(i * 3, last * 3, last * 3 + 3);
+        this.renderableTint.copyWithin(i * TINT_STRIDE, last * TINT_STRIDE, (last + 1) * TINT_STRIDE);
         this.renderableLodSlot[i] = this.renderableLodSlot[last];
         this.renderableLodSphere.copyWithin(i * 4, last * 4, last * 4 + 4);
         this.renderableCoverage.copyWithin(i * 2, last * 2, last * 2 + 2);
@@ -1424,7 +1456,7 @@ export class Scene {
       }
       this.renderablePrimitive[last] = undefined;
       this.renderableMorphExtent[last] = null;
-      this.renderableTint.fill(0, last * 3, last * 3 + 3);
+      this.renderableTint.fill(0, last * TINT_STRIDE, (last + 1) * TINT_STRIDE);
       this.revision = nextRevision++;
     }
 
@@ -1444,7 +1476,7 @@ export class Scene {
       delete this._names[slot];
       // A reused slot starts with none.
       if (this._tints.delete(slot)) { this._tintDirty = true; this._tintHas[slot] = 0; }
-      if (slot < this._tintHas.length) this._tintAt.fill(0, slot * 6, slot * 6 + 6);
+      if (slot < this._tintHas.length) this._tintAt.fill(0, slot * TINT_FLOATS, (slot + 1) * TINT_FLOATS);
     }
 
     // Lights on any doomed entity go too. Before the entities are freed, so
@@ -2551,6 +2583,7 @@ export class Scene {
    * yourself when you drive renderFrame.
    */
   advance(dt) {
+    if (dt > 0) this.time += dt;
     this._advanceAnimations(dt);
     this._advanceParticles(dt);
   }

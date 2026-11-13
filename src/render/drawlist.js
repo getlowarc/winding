@@ -73,10 +73,11 @@ const TRANSPARENT_DEPTH_MAX = (1 << TRANSPARENT_DEPTH_BITS) - 1;
  * means a second key word and a radix sort that walks both.
  */
 export function opaqueSortKey(pipelineId, materialId, depthBucket) {
+  // The pipeline field only groups draws by pipeline, and each surface hook
+  // adds pipelines (material.js), so past what it holds an id wraps: two
+  // pipelines share a bucket, which costs a pipeline change, never a wrong draw.
+  pipelineId &= (1 << OPAQUE_PIPELINE_BITS) - 1;
   if (DEBUG) {
-    if (!(pipelineId >>> 0 === pipelineId && pipelineId < (1 << OPAQUE_PIPELINE_BITS))) {
-      assert(false, `opaqueSortKey: pipeline id ${pipelineId} does not fit in ${OPAQUE_PIPELINE_BITS} bits`);
-    }
     if (!(materialId >>> 0 === materialId && materialId < (1 << OPAQUE_MATERIAL_BITS))) {
       assert(false, `opaqueSortKey: material id ${materialId} does not fit in ${OPAQUE_MATERIAL_BITS} bits`);
     }
@@ -94,10 +95,10 @@ export function transparentSortKey(pipelineId, materialId, depthBucket) {
   // The messages are built only when a check fails. Passed to assert() they
   // were built on every call, checks passing or not, and DEBUG ships on:
   // 33 us of string formatting for 1,700 keys, per frame.
+  // Wrapped as the opaque key's is: within one depth bucket, it only groups.
+  // Unmasked, an id past 31 ORed into the depth bits and reordered the blending.
+  pipelineId &= (1 << TRANSPARENT_PIPELINE_BITS) - 1;
   if (DEBUG) {
-    if (!(pipelineId < (1 << TRANSPARENT_PIPELINE_BITS))) {
-      assert(false, `transparentSortKey: pipeline id ${pipelineId} does not fit in ${TRANSPARENT_PIPELINE_BITS} bits`);
-    }
     if (!(materialId < (1 << TRANSPARENT_MATERIAL_BITS))) {
       assert(false, `transparentSortKey: material id ${materialId} does not fit in ${TRANSPARENT_MATERIAL_BITS} bits`);
     }

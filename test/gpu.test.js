@@ -1365,6 +1365,42 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report;
   });
 
+  await step('a surface hook recolours its materials, reads its node\'s params, and can cut holes', async () => {
+    // Red where params.x is 0, cut away where it is past a half; the same
+    // floor loaded without the hook stays grey. Params come down from a parent.
+    const hook = await engine.createSurfaceHook(`
+      fn surface(s : ptr<function, HookedSurface>) {
+        if ((*s).params.x > 0.5) { discard; }
+        (*s).baseColor = vec4<f32>((*s).baseColor.r, 0.0, 0.0, (*s).baseColor.a);
+      }`);
+    let threw = '';
+    try { await engine.createSurfaceHook('fn surface(s : ptr<function, HookedSurface>) { (*s).nope = 1.0; }'); } catch (error) { threw = error.message; }
+    if (!/nope/.test(threw)) throw new Error(`a broken hook should throw the compiler's message, got "${threw}"`);
+    const bytes = buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 });
+    const plainFloor = await engine.load(bytes), hookedFloor = await engine.load(bytes, { hook });
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const centre = async (asset, params = null) => {
+      const scene = engine.createScene();
+      const parent = scene.createNode();
+      if (params) parent.setHookParams(...params);
+      if (asset) scene.add(asset, { parent }).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+      scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const i = (Math.floor(engine.gpu.height / 2) * engine.gpu.width + Math.floor(engine.gpu.width / 2)) * 4;
+      return [pixels[i], pixels[i + 1], pixels[i + 2]];
+    };
+    const plain = await centre(plainFloor), red = await centre(hookedFloor), cut = await centre(hookedFloor, [1, 0]);
+    const empty = await centre(null);
+    const report = `plain ${plain}, hooked ${red}, hooked with params.x 1 from its parent ${cut}, no floor ${empty}`;
+    if (!(plain[1] > 100 && Math.abs(plain[0] - plain[1]) < 10)) throw new Error(`unhooked floor not grey: ${report}`);
+    if (!(red[0] > 100 && red[1] < 20)) throw new Error(`hooked floor not red: ${report}`);
+    if (!cut.every((c, k) => Math.abs(c - empty[k]) <= 2)) throw new Error(`params.x 1 did not cut the floor: ${report}`);
+    return report;
+  });
+
   await step('point and spot lights cast shadows when asked, and only where the caster is', async () => {
     // A blocker over the ground, one light above it and no sun, from straight
     // above. The ground under the blocker must darken when the light casts,
