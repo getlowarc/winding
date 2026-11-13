@@ -95,7 +95,7 @@ struct CullParams {
 /** gpudriven.js's draw data: only the model matrix is read. */
 struct DrawData {
   model : mat4x4<f32>,
-  rest  : array<vec4<f32>, 4>,
+  rest  : array<vec4<f32>, 2>,
 };
 
 /** A merged chunk: its object, its group, its triangles, its place, and its box. */

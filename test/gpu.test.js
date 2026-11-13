@@ -692,7 +692,7 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     // And the draw data carries both, on a batch the renderer calls skinned.
     const gpu = engine.renderer.gpu;
     const word = index * (DRAW_DATA_BYTES / 4);
-    const targets = gpu.drawDataU32[word + 31] & 0xffff;
+    const targets = gpu.drawDataU32[word + 22] & 0xffff;
     if (targets !== 1) throw new Error(`draw data says ${targets} targets, expected 1`);
 
     let skinnedBatches = 0;
@@ -1339,6 +1339,29 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     const report = `${scrolled} cascades scrolled and ${whole} drawn whole over 90 frames; against all redrawn, ${differ} channels differ, most by ${most}`;
     // Rounding where the strips meet may move a texel's edge: a level or two, rarely.
     if (!(scrolled > whole && differ <= kept.length * 0.001 && most <= 2)) throw new Error(report);
+    return report;
+  });
+
+  await step('a mirrored node is lit as its unmirrored twin', async () => {
+    // The vertex shader makes the normal matrix from the model matrix; a
+    // negative scale must turn it back over, or a mirrored floor faces down
+    // and goes dark under a sun straight above.
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const brightness = async (scale) => {
+      const scene = engine.createScene();
+      scene.add(ground).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(...scale);
+      scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const i = (Math.floor(engine.gpu.height / 2) * engine.gpu.width + Math.floor(engine.gpu.width / 2)) * 4;
+      return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+    };
+    const plain = await brightness([5, 5, 1]), mirrored = await brightness([-5, 5, 1]), squashed = await brightness([5, 0.5, 1]);
+    const report = `plain ${plain.toFixed(0)}, mirrored ${mirrored.toFixed(0)}, squashed ${squashed.toFixed(0)}`;
+    if (!(plain > 40 && Math.abs(mirrored - plain) <= 2 && Math.abs(squashed - plain) <= 2)) throw new Error(report);
     return report;
   });
 

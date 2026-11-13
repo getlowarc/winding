@@ -105,16 +105,13 @@ struct Cascade {
 
 struct DrawData {
   model         : mat4x4<f32>,
-  // The normal matrix and the tint and glow words, unread here: see pbr.js.
-  normal0       : vec3<f32>,
+  // The tint and glow words, unread here: see pbr.js.
   tint0         : u32,
-  normal1       : vec3<f32>,
   tint1         : u32,
-  normal2       : vec3<f32>,
   tint2         : u32,
   // Unread by the unskinned path below, and NOT optional. WGSL sizes a struct
-  // from its members, so leaving this out makes the shadow pass read a
-  // 112-byte stride out of a buffer the CPU writes at 128 -- instance 0 lands
+  // from its members, so leaving this out makes the shadow pass read an
+  // 80-byte stride out of a buffer the CPU writes at 96 -- instance 0 lands
   // correctly and every one after it is misaligned, which is shadows in the
   // wrong places and no error anywhere.
   paletteOffset : u32,

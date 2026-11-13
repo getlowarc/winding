@@ -32,7 +32,7 @@ export const MORPH_FLOAT_BYTES = 4;
  *
  * Both are properties of the primitive and both are small: a stride is 3, 6 or
  * 9, and a target count past 65535 is not a mesh anyone authored. Splitting
- * them into two fields would push DrawData from 128 bytes to 144 for twelve
+ * them into two fields would push DrawData from 96 bytes to 112 for twelve
  * bits of information.
  */
 export function packMorphCountStride(count, stride) {

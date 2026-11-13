@@ -135,39 +135,35 @@ struct LocalView {
 /**
  * Per-object data, indexed by the shader rather than bound per draw.
  *
- * In a STORAGE buffer this is 112 bytes. As a dynamic uniform it had to sit on
- * a 256-byte boundary, so 144 of every 256 bytes was padding: 69% waste,
- * measured. Storage has no such rule, and the index can come from a compute
- * shader instead of from the CPU.
+ * In a STORAGE buffer this is 96 bytes. As a dynamic uniform it had to sit on
+ * a 256-byte boundary. Storage has no such rule, and the index can come from
+ * a compute shader instead of from the CPU. No normal matrix: the vertex
+ * shader makes it from the model matrix (shadeVertex), cheaper than the 48
+ * bytes a renderable it cost to build, upload and fetch.
  */
 struct DrawData {
   model         : mat4x4<f32>,    //   0
-  // The normal matrix, a column at a time, each with a word in what would be
-  // a mat3x3's padding: the node's tint and glow (node.setTint, setGlow), as
-  // six 16-bit floats -- tint less 1, then glow, so all zero is neither.
-  // Words, not floats: two halves read as one f32 can be a denormal, which
-  // a GPU may flush to zero on the way in. The same 48 bytes as a mat3x3, which
-  // is how the shadow and merged passes still declare them.
-  normal0       : vec3<f32>,      //  64
-  tint0         : u32,            //  76
-  normal1       : vec3<f32>,      //  80
-  tint1         : u32,            //  92
-  normal2       : vec3<f32>,      //  96
-  tint2         : u32,            // 108
+  // The node's tint and glow (node.setTint, setGlow), as six 16-bit floats --
+  // tint less 1, then glow, so all zero is neither. Words, not floats: two
+  // halves read as one f32 can be a denormal, which a GPU may flush to zero
+  // on the way in.
+  tint0         : u32,            //  64
+  tint1         : u32,            //  68
+  tint2         : u32,            //  72
   // Where this instance's joint matrices begin. Zero and unread for anything
   // not skinned.
-  paletteOffset : u32,            // 112
+  paletteOffset : u32,            //  76
   // Where this PRIMITIVE's morph deltas begin, as a float index into one
   // engine-wide arena.
-  morphBase     : u32,            // 116
+  morphBase     : u32,            //  80
   // Where this INSTANCE's weights begin. Two faces sharing a mesh share
   // morphBase and differ here, which is what lets them share a draw call.
-  morphWeights  : u32,            // 120
+  morphWeights  : u32,            //  84
   // Target count in the low 16 bits, floats per target per vertex in the high
-  // 16. Packed because splitting them would push this struct to 144 bytes for
+  // 16. Packed because splitting them would push this struct to 112 bytes for
   // twelve bits; see packMorphCountStride in render/morph.js.
-  morphCount    : u32,            // 124
-};                                // 128, exactly: mat3x3 aligns the struct to 16
+  morphCount    : u32,            //  88
+};                                // 96: the mat4x4 aligns the struct to 16
 
 /** The only thing still bound per draw: where this batch's slice begins. */
 struct Batch {
@@ -414,8 +410,15 @@ fn shadeVertex(
 
   // Normals use the inverse-transpose; tangents do NOT. A tangent is a
   // direction along the surface, so it transforms like a position delta and
-  // the model matrix is correct for it.
-  out.normal = normalize(mat3x3<f32>(draw.normal0, draw.normal1, draw.normal2) * m.normal);
+  // the model matrix is correct for it. The cofactor matrix -- each column the
+  // cross product of the other two -- is the inverse-transpose times the
+  // determinant: normalized, only the determinant's sign is left, which a
+  // mirrored node's turns over.
+  let c0 = draw.model[0].xyz;
+  let c1 = draw.model[1].xyz;
+  let c2 = draw.model[2].xyz;
+  let cofactor = mat3x3<f32>(cross(c1, c2), cross(c2, c0), cross(c0, c1));
+  out.normal = normalize(cofactor * m.normal) * select(1.0, -1.0, dot(c0, cross(c1, c2)) < 0.0);
   out.tangent = normalize((draw.model * vec4<f32>(m.tangent, 0.0)).xyz);
 
   // tangent.w is the handedness the importer computed per vertex, which is

@@ -390,7 +390,7 @@ await test('world boxes, draw data and cull bounds on the workers match the same
     items: sharedUint32Array(N), localMin: sharedFloat32Array(N * 3), localMax: sharedFloat32Array(N * 3),
     worldMin: sharedFloat32Array(N * 3), worldMax: sharedFloat32Array(N * 3), matrixSlot: sharedUint32Array(N),
     tint: sharedUint32Array(N * 3), world: sharedFloat32Array(NODES * 16), moved: sharedUint8Array(NODES),
-    drawData: sharedFloat32Array(N * 32), skin: sharedInt32Array(N), paletteOffsets: sharedUint32Array(16),
+    drawData: sharedFloat32Array(N * 24), skin: sharedInt32Array(N), paletteOffsets: sharedUint32Array(16),
     boundsData: sharedFloat32Array(N * 12), coverage: sharedFloat32Array(N * 2), lodSlot: sharedInt32Array(N),
     lodSphere: sharedFloat32Array(N * 4), hidden: sharedUint8Array(N),
   });
@@ -440,7 +440,7 @@ await test('world boxes, draw data and cull bounds on the workers match the same
   }
   // And they did something: each listed renderable has draw data, and only those.
   const isListed = new Set(wide.items.subarray(0, listed));
-  for (let i = 0; i < N; i++) assert.equal(wide.drawData[i * 32] !== 0, isListed.has(i), `renderable ${i}`);
+  for (let i = 0; i < N; i++) assert.equal(wide.drawData[i * 24] !== 0, isListed.has(i), `renderable ${i}`);
   jobs.destroy();
 });
 

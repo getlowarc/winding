@@ -35,10 +35,10 @@ import { storageCapacity, createBuffer } from '../rhi/buffer.js';
 import { FRUSTUM_PLANE_COUNT } from '../core/math/frustum.js';
 
 /**
- * model mat4 (64) + normal mat3x3 (48) + four u32 (16), rounded to the
- * struct's 16-byte alignment. 128.
+ * model mat4 (64) + seven u32 (28), rounded to the struct's 16-byte
+ * alignment. 96. The normal matrix is the vertex shader's: see shadeVertex.
  */
-export const DRAW_DATA_BYTES = 128;
+export const DRAW_DATA_BYTES = 96;
 /** indexCount, instanceCount, firstIndex, baseVertex, firstInstance */
 export const INDIRECT_BYTES = 20;
 /** Per-batch uniform: where this batch's slice of the visible list starts. */
@@ -1015,9 +1015,9 @@ export class GpuDriven {
       // u32 arithmetic wraps on the GPU as >>> 0 does here, so the sum lands
       // right even where this one is "negative".
       const cs = primitive.morphCountStride;
-      this.drawDataU32[drawFloat + 29] = (primitive.morphBase - primitive.baseVertex * (cs & 0xffff) * (cs >>> 16)) >>> 0;
-      this.drawDataU32[drawFloat + 30] = morph.offsets[m];
-      this.drawDataU32[drawFloat + 31] = cs;
+      this.drawDataU32[drawFloat + 20] = (primitive.morphBase - primitive.baseVertex * (cs & 0xffff) * (cs >>> 16)) >>> 0;
+      this.drawDataU32[drawFloat + 21] = morph.offsets[m];
+      this.drawDataU32[drawFloat + 22] = cs;
     }
     this._needsFullUpload = false;
     for (const i of this._touched) this._touchedMark[i] = 0;

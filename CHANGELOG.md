@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moved from 1/1024 of the light's radius to 1/64, which keeps a depth step at the edge of its reach
   to a thousandth of the radius. So a caster within 1/64 of the radius of the light (19 cm for a
   12 m torch) no longer casts.
+- **A renderable's draw data is 96 bytes, not 128.** The normal matrix is no longer built on the CPU
+  and uploaded with every moved renderable: the vertex shader makes it from the model matrix, a few
+  cross products. The harness's horde (9,000 renderables) on Iris Xe uploads 901 KB a frame instead
+  of 1,201, its draw data stage takes 1.0 ms instead of 1.1, and the GPU frame doesn't change.
 
 ### Fixed
 

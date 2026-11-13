@@ -660,7 +660,7 @@ test('growing draw data replaces both views of it', () => {
   assert.equal(gpu.drawDataU32.length, gpu.drawData.length);
 
   // And behaviourally: a u32 write at the far end lands in the uploaded array.
-  const word = (gpu.capacity - 1) * (DRAW_DATA_BYTES / 4) + 28;
+  const word = (gpu.capacity - 1) * (DRAW_DATA_BYTES / 4) + 19;
   gpu.drawDataU32[word] = 0x3f800000;                  // 1.0f, seen as bits
   close(gpu.drawData[word], 1, EPS, 'the write reached the float view');
 });
