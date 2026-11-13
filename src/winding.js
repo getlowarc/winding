@@ -6,6 +6,7 @@
 
 export { Winding } from './app/engine.js';
 export { OrbitController } from './app/controllers.js';
+export { Input } from './app/input.js';
 export { StatsOverlay } from './app/overlay.js';
 
 export { Camera } from './scene/camera.js';

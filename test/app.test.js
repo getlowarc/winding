@@ -4,6 +4,7 @@
 // GPU but never calls a WebGPU function, which is exactly what makes this
 // testable -- and is why the layering was worth keeping strict.
 
+import { Input } from '../src/app/input.js';
 import { outlinedRenderables } from '../src/render/outlines.js';
 import assert from 'node:assert/strict';
 
@@ -2523,6 +2524,60 @@ test('an outline reaches every mesh under its node, the nearest outlined node de
   assert.equal(scene.outlines.size, 0, 'gone with its node');
   assert.throws(() => scene.add(fakeAsset()).setOutline([1, 0, 0], { width: 9 }), /^RangeError: setOutline: width must be from 0.5 to 8 pixels/);
   assert.throws(() => scene.add(fakeAsset()).setOutline([1, 0]), /^Error: setOutline: color must be 3 or 4 numbers/);
+});
+
+test('input: keys held, pressed and released by name; a press seen once; focus lost lets go', () => {
+  const target = new EventTarget();
+  const send = (type, fields) => target.dispatchEvent(Object.assign(new Event(type), fields));
+  const input = new Input({ keys: target, pointer: null, pads: () => [] });
+  send('keydown', { code: 'Space' });
+  send('keydown', { code: 'Space', repeat: true });
+  assert.ok(input.down('Space') && input.pressed('Space') && !input.released('Space'));
+  input.consume();
+  assert.ok(input.down('Space') && !input.pressed('Space'), 'held, but pressed only until a step has seen it');
+  send('keyup', { code: 'Space' });
+  assert.ok(!input.down('Space') && input.released('Space'));
+  send('keydown', { code: 'KeyW' });
+  send('blur', {});
+  assert.ok(!input.down('KeyW') && input.released('KeyW'), 'focus lost: let go');
+  input.bind('jump', ['Space', 'PadA']);
+  send('keydown', { code: 'Space' });
+  assert.ok(input.down('jump') && input.pressed('jump'));
+  input.destroy();
+  send('keyup', { code: 'Space' });
+  assert.ok(input.down('Space'), 'destroyed: no longer listening');
+});
+
+test('input: gamepads by standard name, any or one, with a radial dead zone, and axis actions', () => {
+  const pads = [];
+  const pad = (index, a, x, y) => ({
+    index, id: `pad ${index}`, connected: true, mapping: 'standard',
+    buttons: Array.from({ length: 17 }, (_, b) => ({ value: b === 0 ? a : 0, pressed: b === 0 && a > 0.5 })),
+    axes: [x, y, 0, 0],
+  });
+  const target = new EventTarget();
+  const input = new Input({ keys: target, pointer: null, pads: () => pads });
+  pads[0] = pad(0, 0, 0.1, 0.1);
+  pads[1] = pad(1, 1, 0, 0);
+  input.poll();
+  assert.ok(input.pressed('PadA') && input.pressed('PadA', 1) && !input.pressed('PadA', 0), 'the second pad pressed A');
+  assert.ok(input.down('PadA') && !input.down('PadA', 0));
+  assert.equal(input.value('PadLeftX', 0), 0, 'inside the dead zone');
+  pads[0] = pad(0, 0, 1, 0);
+  input.consume();
+  input.poll();
+  assert.equal(input.value('PadLeftX', 0), 1, 'full over');
+  pads[0] = pad(0, 0, 0.575, 0);
+  input.poll();
+  assert.ok(Math.abs(input.value('PadLeftX', 0) - 0.5) < 1e-9, 'past the dead zone, from 0 again: halfway is half');
+  input.bind('moveX', { negative: ['KeyA'], positive: ['KeyD'], axis: 'PadLeftX' });
+  target.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyA' }));
+  assert.ok(Math.abs(input.value('moveX') + 0.5) < 1e-9, 'stick right a half, A held: left a half');
+  pads[1] = { ...pads[1], connected: false };
+  input.consume();
+  input.poll();
+  assert.ok(input.released('PadA', 1) && !input.down('PadA'), 'unplugged with A held: released');
+  assert.deepEqual(input.pads.map((p) => p.index), [0]);
 });
 
 console.log(`\n${passed} checks passed\n`);

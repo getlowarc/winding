@@ -51,7 +51,7 @@ These hold everywhere, so one learned is one learned for good.
 <a id="contents"></a>
 ## Contents
 
-[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Inverse kinematics](#inverse-kinematics) · [Lights](#lights) · [Particles](#particles) · [Trails](#trails) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
+[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Inverse kinematics](#inverse-kinematics) · [Lights](#lights) · [Particles](#particles) · [Trails](#trails) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [Input](#input) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
 
 <a id="index"></a>
 ## Index
@@ -60,11 +60,11 @@ Every call, setting and entry, A to Z by its name.
 
 **A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes) · [`scene.addTrail()`](#scene-addtrail) · [`scene.addIK()`](#scene-addik)
 
-**B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst)
+**B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst) · [`input.bind()`](#input-bind)
 
 **C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`engine.createSurfaceHook()`](#engine-createsurfacehook) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget) · [`scene.clearTrail()`](#scene-cleartrail)
 
-**D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox) · [`engine.renderer.dynamicResolution`](#renderer-dynamicresolution)
+**D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox) · [`engine.renderer.dynamicResolution`](#renderer-dynamicresolution) · [`input.down()`](#input-down)
 
 **E** &nbsp; [`scene.emitterOf()`](#scene-emitterof) · [`engine.environment`](#engine-environment) · [`scene.environment`](#scene-environment) · [`new Environment()`](#environment) · [`engine.renderer.exposure`](#renderer-exposure)
 
@@ -74,31 +74,31 @@ Every call, setting and entry, A to Z by its name.
 
 **H** &nbsp; [`node.hookParams`](#node-hookparams) · [`HUD`](#view2d-hud)
 
-**I** &nbsp; [`engine.invalidate()`](#engine-invalidate) · [`camera.is2D`](#camera2d-is2d)
+**I** &nbsp; [`engine.invalidate()`](#engine-invalidate) · [`camera.is2D`](#camera2d-is2d) · [`engine.input`](#engine-input)
 
 **K** &nbsp; [`engine.renderer.post.knee`](#post-knee)
 
-**L** &nbsp; [`engine.gpu.loseForTest()`](#engine-gpu-losefortest) · [`engine.renderer.lightDistance`](#renderer-lightdistance) · [`engine.renderer.post.levels`](#post-levels) · [`scene.lightOf()`](#scene-lightof) · [`engine.debug.line()`](#debug-line) · [`linearToSrgb()`](#color-lineartosrgb) · [`lit`](#view2d-lighting) · [`engine.load()`](#engine-load) · [`engine.loadEnvironment()`](#engine-loadenvironment) · [`engine.loadFont()`](#engine-loadfont) · [`engine.loadLUT()`](#engine-loadlut) · [`engine.loadSplats()`](#engine-loadsplats) · [`engine.loadTexture()`](#engine-loadtexture)
+**L** &nbsp; [`engine.gpu.loseForTest()`](#engine-gpu-losefortest) · [`engine.renderer.lightDistance`](#renderer-lightdistance) · [`engine.renderer.post.levels`](#post-levels) · [`scene.lightOf()`](#scene-lightof) · [`engine.debug.line()`](#debug-line) · [`linearToSrgb()`](#color-lineartosrgb) · [`lit`](#view2d-lighting) · [`engine.load()`](#engine-load) · [`engine.loadEnvironment()`](#engine-loadenvironment) · [`engine.loadFont()`](#engine-loadfont) · [`engine.loadLUT()`](#engine-loadlut) · [`engine.loadSplats()`](#engine-loadsplats) · [`engine.loadTexture()`](#engine-loadtexture) · [`input.lockPointer()`](#input-lockpointer)
 
-**M** &nbsp; [`mat4`](#math-mat4) · [`engine.renderer.motionBlur`](#renderer-motionblur)
+**M** &nbsp; [`mat4`](#math-mat4) · [`engine.renderer.motionBlur`](#renderer-motionblur) · [`input.mouse`](#input-mouse)
 
 **N** &nbsp; [`node.name`](#node-name) · [`scene.node()`](#scene-node)
 
 **O** &nbsp; [`engine.renderer.oit`](#renderer-oit) · [`engine.onDemand`](#engine-ondemand) · [`new OrbitController()`](#orbitcontroller) · [`camera.orthographicHalfHeight()`](#camera-orthographichalfheight) · [`node.outline`](#node-outline)
 
-**P** &nbsp; [`Painter's order`](#view2d-order) · [`parseHDR()`](#parsehdr) · [`engine.prepare()`](#engine-prepare) · [`scene.particlesActive`](#scene-particlesactive) · [`scene.pathOf()`](#scene-pathof) · [`scene.pick()`](#scene-pick) · [`scene.pick()`](#scene-pick-2d) · [`camera.pivot`](#camera2d-pivot) · [`engine.gpu.pixelRatio`](#engine-gpu-pixelratio) · [`camera.pixelSnap`](#camera2d-pixelsnap) · [`node.play()`](#node-play) · [`camera.position`](#camera2d-position) · [`scene.probeOf()`](#scene-probeof)
+**P** &nbsp; [`Painter's order`](#view2d-order) · [`parseHDR()`](#parsehdr) · [`engine.prepare()`](#engine-prepare) · [`scene.particlesActive`](#scene-particlesactive) · [`scene.pathOf()`](#scene-pathof) · [`scene.pick()`](#scene-pick) · [`scene.pick()`](#scene-pick-2d) · [`camera.pivot`](#camera2d-pivot) · [`engine.gpu.pixelRatio`](#engine-gpu-pixelratio) · [`camera.pixelSnap`](#camera2d-pixelsnap) · [`node.play()`](#node-play) · [`camera.position`](#camera2d-position) · [`scene.probeOf()`](#scene-probeof) · [`input.pads`](#input-pads) · [`input.pressed()`](#input-pressed)
 
 **Q** &nbsp; [`quat`](#math-quat)
 
-**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run) · [`scene.removeIK()`](#scene-removeik)
+**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run) · [`scene.removeIK()`](#scene-removeik) · [`input.released()`](#input-released)
 
 **S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline) · [`scene.setIK()`](#scene-setik)
 
 **T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof) · [`scene.trailOf()`](#scene-trailof)
 
-**U** &nbsp; [`engine.unload()`](#engine-unload) · [`scene.update()`](#scene-update) · [`camera.update()`](#camera2d-update) · [`camera.update()`](#camera-update) · [`orbit.update()`](#orbitcontroller-update) · [`overlay.update()`](#statsoverlay-update)
+**U** &nbsp; [`engine.unload()`](#engine-unload) · [`scene.update()`](#scene-update) · [`camera.update()`](#camera2d-update) · [`camera.update()`](#camera-update) · [`orbit.update()`](#orbitcontroller-update) · [`overlay.update()`](#statsoverlay-update) · [`input.update()`](#input-update)
 
-**V** &nbsp; [`node.visible`](#node-visible) · [`vec3`](#math-vec3) · [`camera.view`](#camera2d-matrices)
+**V** &nbsp; [`node.visible`](#node-visible) · [`vec3`](#math-vec3) · [`camera.view`](#camera2d-matrices) · [`input.value()`](#input-value)
 
 **W** &nbsp; [`node.weights`](#node-weights) · [`camera.width`](#camera2d-size) · [`node.worldPosition()`](#node-worldposition) · [`node.worldRotation()`](#node-worldrotation) · [`camera.worldToScreen()`](#camera2d-worldtoscreen)
 
@@ -2873,6 +2873,83 @@ Notes:
 - Node transforms are brought up to date first, so a node moved since the last frame is hit where it is now.
 - Emitters are never hit.
 - With a 3D camera, `scene.pick` casts a ray instead; see [`scene.pick`](#scene-pick).
+
+<a id="input"></a>
+## Input
+
+Keyboard, mouse and gamepads, read by name each frame rather than handled as events: is jump held, was it pressed since the last step, how far is the stick over. Names are one namespace:
+
+- keys by [`KeyboardEvent.code`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/code): `'KeyW'`, `'Space'`, `'ShiftLeft'`, `'ArrowUp'`, so a key stays where it is on any layout;
+- mouse buttons: `'MouseLeft'`, `'MouseRight'`, `'MouseMiddle'`;
+- gamepad buttons, in the standard mapping (an Xbox pad, a PlayStation one, a Steam Deck through Steam Input): `'PadA'`, `'PadB'`, `'PadX'`, `'PadY'`, `'PadLB'`, `'PadRB'`, `'PadLT'`, `'PadRT'`, `'PadBack'`, `'PadStart'`, `'PadLS'`, `'PadRS'`, `'PadUp'`, `'PadDown'`, `'PadLeft'`, `'PadRight'`, `'PadHome'`; and the sticks' axes, `'PadLeftX'`, `'PadLeftY'`, `'PadRightX'`, `'PadRightY'` (y down). A pad with no standard mapping has `'PadButton0'` up and `'PadAxis0'` up.
+
+<a id="engine-input"></a>
+### `engine.input` → `Input`
+
+The engine's input, made the first time it is asked for: keys from the window, so the canvas need not have focus; the mouse measured against the canvas. [`engine.run`](#engine-run) keeps it up to date: the gamepads are read at the start of each frame, and each press and release is seen by one fixed `update` step, so a press is neither lost in a frame that runs no step nor counted twice in one that runs two. Driving frames with [`renderFrame`](#engine-renderframe), call [`input.update()`](#input-update) once a frame yourself.
+
+```js
+const input = engine.input;
+input.bind('jump', ['Space', 'PadA']);
+input.bind('moveX', { negative: ['KeyA', 'ArrowLeft'], positive: ['KeyD', 'ArrowRight'], axis: 'PadLeftX' });
+engine.run(scene, camera, {
+  update(dt) {
+    player.x += input.value('moveX') * speed * dt;
+    if (input.pressed('jump') && player.grounded) player.jump();
+  },
+});
+```
+
+Throws: `'input: this engine was destroyed'`.
+
+<a id="input-bind"></a>
+### `input.bind(action, sources)` → `Input`
+
+An action: a name for several inputs together, then read as one with the calls below. Buttons, as a list: held when any is. An axis, from -1 to 1, as `{ negative, positive, axis }`: the keys or buttons that push it each way, and a stick's axis, summed and clamped. Binding a name again replaces it.
+
+Throws: `'bind: … needs a list of names, or { negative, positive, axis }'`.
+
+<a id="input-down"></a>
+### `input.down(name, pad)` → `boolean`
+
+Whether a key, button or action is held. `pad`, a gamepad's index, asks that one alone, for players on their own pads; without it, any. An axis action is held when pushed past half.
+
+<a id="input-pressed"></a>
+### `input.pressed(name, pad)` → `boolean`
+
+Whether it went down since the last fixed step, under `engine.run`, or since the last `update()`. A key held down repeats nothing here: only the first press.
+
+<a id="input-released"></a>
+### `input.released(name, pad)` → `boolean`
+
+Whether it came up since the last step, as `pressed`. A key held when the window loses focus is released then, so none is left stuck down.
+
+<a id="input-value"></a>
+### `input.value(name, pad)` → `number`
+
+How far: 0 or 1 for a key or a mouse button, 0 to 1 for a trigger, -1 to 1 for a stick's axis or an axis action. A stick inside `input.deadZone` (0.15 by default) reads 0, measured round the stick rather than per axis, and past it starts again from 0, so there is no jump at its edge.
+
+<a id="input-mouse"></a>
+### `input.mouse` → `{ x, y, dx, dy, wheel }`
+
+The mouse: where it is over the canvas, in CSS pixels from its top left, and how far it moved and the wheel turned since the last step. `dx` and `dy` keep counting with the pointer locked.
+
+<a id="input-pads"></a>
+### `input.pads` → `{ index, id, standard }[]`
+
+The gamepads connected. A browser lists a gamepad only once a button on it has been pressed.
+
+<a id="input-lockpointer"></a>
+### `input.lockPointer()` and `input.locked`
+
+Capture the mouse, for a camera turned by it: the pointer is hidden and `mouse.dx` and `dy` go on past the screen's edge. Call it from a click or a key press; the browser refuses otherwise. Escape lets it go. `locked` says whether it is captured.
+
+<a id="input-update"></a>
+### `input.update()`
+
+Start a frame, in a loop of your own: forget last frame's presses, releases and mouse movement, and read the gamepads. Not needed under [`engine.run`](#engine-run), which does it a step at a time.
+
+Notes: `new Input({ keys, pointer, pads, deadZone })` makes one apart from the engine's, for a page with no engine or a second canvas; `input.destroy()` stops it listening. Nothing calls `preventDefault`: a game that wants Space not to scroll the page, or the right button not to open a menu, says so on its own listeners.
 
 <a id="orbitcontroller"></a>
 ## OrbitController

@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hierarchy from the nearest node that set them. They ride in the draw data's last free word, so
   setting them keeps the node in its batch.
 - **`scene.time`**: the seconds `scene.advance` has moved the scene on, the clock hooks read.
+- **`engine.input`: keyboard, mouse and gamepads, read by name.** `down`, `pressed`, `released` and
+  `value` for keys (`KeyboardEvent.code`), mouse buttons and standard-mapping gamepad buttons and sticks
+  (`'PadA'`, `'PadLeftX'`), one pad or any; actions with `bind`, buttons or a -1 to 1 axis from keys and
+  a stick; a radial dead zone; the mouse's position, movement and wheel, and pointer lock. Under
+  `engine.run` each press is seen by exactly one fixed step. Keys held when focus is lost are let go.
+  `Input` is exported for a page of its own.
 - **`engine.renderer.motionBlur`: each frame smeared along how far each pixel moved**, as an open
   shutter smears it. Opaque surfaces write their own motion, from last frame's draw data and joints
   (copied on the GPU at the end of each frame), so what moves past a still camera blurs and what is

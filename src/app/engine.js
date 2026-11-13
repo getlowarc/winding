@@ -49,6 +49,7 @@ import { boundsRange, drawDataRange } from '../scene/renderableJob.js';
 import { sharedMemoryAvailable } from '../core/shared.js';
 import { TAA_SETTLE } from '../render/taa.js';
 import { checkOptions } from '../core/options.js';
+import { Input } from './input.js';
 
 
 /**
@@ -953,10 +954,21 @@ export class Winding {
       // pause menu still moves.
       scene.advance(this.clock.delta);
       hud?.scene.advance(this.clock.realDelta);
-      if (update) while (this.clock.step()) update(this.clock.fixedDt, this.clock.elapsed);
-      else this.clock.accumulator = 0;   // nothing to simulate; do not let it grow
+      // Input: the gamepads read, and each press handed to one fixed step --
+      // kept for the next frame when this one runs none, never seen twice when it runs two.
+      const input = this._input;
+      input?.poll();
+      if (update) {
+        while (this.clock.step()) {
+          update(this.clock.fixedDt, this.clock.elapsed);
+          input?.consume();
+        }
+      } else {
+        this.clock.accumulator = 0;   // nothing to simulate; do not let it grow
+      }
 
       if (frame) frame(this.clock.alpha, this.clock);
+      if (!update) input?.consume();
       // update() or frame() may have stopped the loop, or destroyed the engine.
       if (!this._running) return;
       const idle = this.onDemand && this._idle(scene, camera, hud);
@@ -1364,9 +1376,20 @@ export class Winding {
    * The environment is destroyed only if this engine made it -- its default
    * sky. One from loadEnvironment is the caller's, freed with unload.
    */
+  /**
+   * Keyboard, mouse and gamepads, read by name (see app/input.js): made the
+   * first time it is asked for, listening to the window for keys and to the
+   * canvas for the mouse. engine.run keeps it up to date.
+   */
+  get input() {
+    this._assertAlive('input');
+    return (this._input ??= new Input({ keys: globalThis, pointer: this.gpu.canvas ?? null }));
+  }
+
   destroy() {
     if (this._destroyed) return;   // the loop may already have done it
     this._destroyed = true;
+    this._input?.destroy();
     this.stop();
     this.jobs.destroy();
     this.renderer.destroy();

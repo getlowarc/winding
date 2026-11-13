@@ -346,6 +346,8 @@ export class Winding {
   readonly renderer: Renderer;
   readonly environment: Environment;
   readonly clock: Clock;
+  /** Keyboard, mouse and gamepads, read by name: see docs/API.md. */
+  readonly input: Input;
   readonly fps: number;
   readonly skippedFrames: number;
   onDemand: boolean;
@@ -796,6 +798,24 @@ export interface OrbitOptions {
   zoomSpeed?: number;
   panSpeed?: number;
   damping?: number;
+}
+
+export class Input {
+  constructor(options?: { keys?: EventTarget; pointer?: HTMLElement | null; pads?: () => (Gamepad | null)[]; deadZone?: number });
+  deadZone: number;
+  readonly mouse: { x: number; y: number; dx: number; dy: number; wheel: number };
+  readonly pads: { index: number; id: string; standard: boolean }[];
+  readonly locked: boolean;
+  bind(action: string, sources: string[] | { negative?: string[]; positive?: string[]; axis?: string | null }): this;
+  down(name: string, pad?: number): boolean;
+  pressed(name: string, pad?: number): boolean;
+  released(name: string, pad?: number): boolean;
+  value(name: string, pad?: number): number;
+  update(): void;
+  poll(): void;
+  consume(): void;
+  lockPointer(): Promise<void> | undefined;
+  destroy(): void;
 }
 
 export class OrbitController {

@@ -377,6 +377,9 @@ toon colours, a texture scrolled by the scene's time. Each node hands it two num
 ([`setHookParams`](docs/API.md#node-sethookparams)), so one hook dissolves a hundred units, each at
 its own point, still in one draw.
 
+**Input** ([`engine.input`](docs/API.md#engine-input)): keyboard, mouse and gamepads by name, actions
+over several of them, and each press seen by one fixed step.
+
 **Motion blur** ([`renderer.motionBlur`](docs/API.md#renderer-motionblur)) from each surface's own
 motion, so a car passing a still camera blurs and the road under it does not.
 
