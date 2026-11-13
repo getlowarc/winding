@@ -125,7 +125,7 @@ export function buildStrip(record, now, eye, out, o) {
   let vertices = 0;
   let sx = 0, sy = 0, sz = 1;
   const { width, widthEnd, lifetime, color, colorEnd } = record;
-  const p = [0, 0, 0, 0], next = [0, 0, 0, 0], prev = [0, 0, 0, 0];
+  let p = [0, 0, 0, 0], next = [0, 0, 0, 0], prev = [0, 0, 0, 0];
   const at = (k, into) => {
     const i = Math.min(Math.floor(k / SMOOTHING), n - 2), t = k / SMOOTHING - i;
     // Catmull-Rom through samples i-1, i, i+1, i+2, the ends repeated.
@@ -138,15 +138,20 @@ export function buildStrip(record, now, eye, out, o) {
     into[3] = s[b + 3] + (s[c + 3] - s[b + 3]) * t;
     return into;
   };
+  // Each point evaluated once, rolled from next to this to previous.
+  at(0, p);
+  at(Math.min(1, points - 1), next);
+  prev.splice(0, 4, ...p);
   for (let k = 0; k < points; k++) {
-    at(k, p);
-    at(Math.min(k + 1, points - 1), next);
-    at(Math.max(k - 1, 0), prev);
+    if (k > 0) {
+      [prev, p, next] = [p, next, prev];
+      at(Math.min(k + 1, points - 1), next);
+    }
     const tx = next[0] - prev[0], ty = next[1] - prev[1], tz = next[2] - prev[2];
     const ex = eye[0] - p[0], ey = eye[1] - p[1], ez = eye[2] - p[2];
     // Across: square to the line and to the eye. Edge-on, the last good one.
     const cx = ty * ez - tz * ey, cy = tz * ex - tx * ez, cz = tx * ey - ty * ex;
-    const length = Math.hypot(cx, cy, cz);
+    const length = Math.sqrt(cx * cx + cy * cy + cz * cz);
     if (length > 1e-12) { sx = cx / length; sy = cy / length; sz = cz / length; }
     const age = Math.min(Math.max((now - p[3]) / lifetime, 0), 1);
     const half = (width + (widthEnd - width) * age) * 0.5;

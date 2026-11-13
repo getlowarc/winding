@@ -15,7 +15,6 @@ import { createBuffer } from '../rhi/buffer.js';
 import { createPipelineLayout, GROUP_FRAME, GROUP_DRAW } from '../rhi/bindgroups.js';
 import { DEPTH_FORMAT } from '../rhi/device.js';
 import { POSITION_BUFFER_LAYOUT, SKIN_BUFFER_LAYOUT } from './vertex.js';
-import { NO_PARENT } from '../scene/transform.js';
 import { BATCH_BYTES } from './gpudriven.js';
 
 /** Distinct outline looks a frame can draw: the mask is 8 bits, and 0 is none. */
@@ -67,26 +66,58 @@ fn fs(@builtin(position) p : vec4<f32>) -> @location(0) vec4<f32> {
 }
 `;
 
+/** outlinedRenderables' scratch, grown with the scene; a new generation a call, so nothing is cleared. */
+const marks = { owner: new Int32Array(0), stamp: new Uint32Array(0), stack: new Uint32Array(0), generation: 0 };
+
 /**
  * Each renderable under an outlined node, with the nearest such node's look:
  * [renderable, style] pairs into `out`, and the looks, deduplicated, into
  * `styles` (a Map from key to slot, from 1). Hidden ones are left out.
+ *
+ * Every node under an outlined one is stamped with it first, walking down
+ * from the outlined nodes, shallowest first so a nested one overwrites its
+ * own subtree; the scan is then a read a renderable. A climb to the root for
+ * each renderable was 2 ms a frame at 50k with one outline anywhere.
  */
 export function outlinedRenderables(scene, out, styles) {
-  const outlines = scene.outlines, parent = scene.transforms.parent;
+  const outlines = scene.outlines, t = scene.transforms;
+  if (outlines.size === 0) return 0;
+  if (t.orderDirty) t._rebuildOrder();
+  if (marks.owner.length < t.parent.length) {
+    marks.owner = new Int32Array(t.parent.length);
+    marks.stamp = new Uint32Array(t.parent.length);
+    marks.stack = new Uint32Array(t.parent.length);
+  }
+  const { owner, stamp, stack } = marks, start = t._childStart, children = t._children, depth = t._depth;
+  const generation = marks.generation = (marks.generation + 1) >>> 0 || 1;
+  const roots = [...outlines.keys()].sort((a, b) => depth[a] - depth[b]);
+  const rootStyle = new Int32Array(roots.length);
+  for (let r = 0; r < roots.length; r++) {
+    let top = 0;
+    stack[top++] = roots[r];
+    while (top > 0) {
+      const e = stack[--top];
+      stamp[e] = generation;
+      owner[e] = r;
+      for (let c = start[e]; c < start[e + 1]; c++) stack[top++] = children[c];
+    }
+  }
   let n = 0;
   for (let i = 0; i < scene.renderableCount; i++) {
     if (scene.renderableHidden[i] === 1) continue;
-    let slot = scene.renderableMatrixSlot[i], look;
-    while (slot !== NO_PARENT && (look = outlines.get(slot)) === undefined) slot = parent[slot];
-    if (look === undefined) continue;
-    let style = styles.get(look.key);
-    if (style === undefined) {
-      if (styles.size === OUTLINE_STYLES) continue;
-      styles.set(look.key, (style = { slot: styles.size + 1, look }));
+    const slot = scene.renderableMatrixSlot[i];
+    if (stamp[slot] !== generation) continue;
+    const r = owner[slot];
+    if (rootStyle[r] === 0) {
+      // A look's slot the first time one of its meshes shows; -1 past the most.
+      const look = outlines.get(roots[r]);
+      let style = styles.get(look.key);
+      if (style === undefined && styles.size < OUTLINE_STYLES) styles.set(look.key, (style = { slot: styles.size + 1, look }));
+      rootStyle[r] = style?.slot ?? -1;
     }
+    if (rootStyle[r] < 0) continue;
     out[n++] = i;
-    out[n++] = style.slot;
+    out[n++] = rootStyle[r];
   }
   return n / 2;
 }
