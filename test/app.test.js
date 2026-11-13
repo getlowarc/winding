@@ -4,6 +4,7 @@
 // GPU but never calls a WebGPU function, which is exactly what makes this
 // testable -- and is why the layering was worth keeping strict.
 
+import { outlinedRenderables } from '../src/render/outlines.js';
 import assert from 'node:assert/strict';
 
 import { Scene, DIRECTIONAL_FLOATS } from '../src/scene/scene.js';
@@ -2490,6 +2491,38 @@ test('hook params come down from the nearest node that set them, in the fourth w
   assert.equal(scene._tints.size, 0, 'nothing kept');
   assert.deepEqual(params(scene, 0), [0, 0]);
   assert.throws(() => unit.setHookParams(NaN), /^RangeError: setHookParams: x and y must be numbers from -65504 to 65504$/);
+});
+
+test('an outline reaches every mesh under its node, the nearest outlined node deciding, and not hidden ones', () => {
+  const scene = new Scene({ capacity: 64 });
+  const army = scene.createNode();
+  const a = scene.add(fakeAsset(), { parent: army });
+  const b = scene.add(fakeAsset(), { parent: army });
+  scene.add(fakeAsset());
+  scene.update();
+  const pairs = new Uint32Array(16), looks = new Map();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 0, 'none');
+  army.setOutline([1, 0, 0]);
+  b.setOutline([0, 1, 0], { width: 4, through: true });
+  scene.update();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 2);
+  assert.deepEqual([...pairs.subarray(0, 4)], [0, 1, 1, 2], "the army's look on its first, the second's own on it");
+  assert.deepEqual(b.outline, { color: [0, 1, 0, 1], width: 4, through: true });
+  a.setVisible(false);
+  scene.update();
+  looks.clear();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 1, 'hidden: left out');
+  b.setOutline(null);
+  a.setVisible(true);
+  scene.update();
+  looks.clear();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 2);
+  assert.equal(looks.size, 1, 'one look, shared');
+  army.destroy();
+  scene.update();
+  assert.equal(scene.outlines.size, 0, 'gone with its node');
+  assert.throws(() => scene.add(fakeAsset()).setOutline([1, 0, 0], { width: 9 }), /^RangeError: setOutline: width must be from 0.5 to 8 pixels/);
+  assert.throws(() => scene.add(fakeAsset()).setOutline([1, 0]), /^Error: setOutline: color must be 3 or 4 numbers/);
 });
 
 console.log(`\n${passed} checks passed\n`);

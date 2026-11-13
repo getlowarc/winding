@@ -863,6 +863,8 @@ export class Scene {
     this.emitters = new Map();
     /** Trails (see addTrail), by the entity each follows. */
     this.trails = new Map();
+    /** Outlines (node.setOutline), by node slot: { color, width, through, key }. */
+    this.outlines = new Map();
     /** Gaussian splat captures (see addSplats), by the entity each hangs off. */
     this.splats = new Map();
     /** Decals (see addDecal), by the entity each hangs off, in the order added. */
@@ -1269,6 +1271,22 @@ export class Scene {
     this._ownTint(slot, at, color[0], color[1], color[2]);
   }
 
+  /** node.setOutline: a look, or null for none. */
+  _setOutline(node, color, options) {
+    if (!node.alive) throw new Error('setOutline: this node was removed');
+    const slot = handleIndex(node.entity);
+    this.changes++;
+    if (color === null) { this.outlines.delete(slot); return; }
+    checkOptions('setOutline', options);
+    const { width = 2, through = false } = options;
+    if (!((color?.length === 3 || color?.length === 4) && [...color].every((c) => Number.isFinite(c) && c >= 0))) {
+      throw new Error(`setOutline: color must be 3 or 4 numbers, 0 or more, or null for none, got ${color}`);
+    }
+    if (!(width >= 0.5 && width <= 8)) throw new RangeError(`setOutline: width must be from 0.5 to 8 pixels, got ${width}`);
+    const rgba = Float32Array.of(color[0], color[1], color[2], color[3] ?? 1);
+    this.outlines.set(slot, { color: rgba, width, through: through === true, key: `${rgba.join(',')}|${width}|${through === true}` });
+  }
+
   /** node.setHookParams. */
   _setHookParams(node, x, y) {
     if (!node.alive) throw new Error('setHookParams: this node was removed');
@@ -1533,6 +1551,7 @@ export class Scene {
       this.sprites.delete(entity);
       this.emitters.delete(entity);
       this.trails.delete(entity);
+      this.outlines.delete(handleIndex(entity));
       this.splats.delete(entity);
       this.decals.delete(entity);
       this.texts.delete(entity);

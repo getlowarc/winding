@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{ target, min, max }` (15 ms, 0.5 and 1 by default). From the GPU's timestamps, every 20 frames:
   down at once by about the square root of the overshoot, up a step of 0.05 only with a fifth of the
   target to spare, so it settles. Does nothing without `timestamp-query`.
+- **`node.setOutline(color, { width, through })`: a line round every mesh under a node**, for a
+  selected unit or a thing to pick up. Screen space, so it holds on flat-shaded low-poly meshes
+  (skinned and morphed too): each outlined mesh drawn into a mask, then one pass over the rectangle
+  they cover finds the edges and fades the last half pixel. `through` shows the whole outline through
+  what is in front. Nothing is drawn without outlines. `node.outline` reads it back;
+  `engine.stats.outlined` counts the meshes.
 - **Trails: `scene.addTrail(options)`**, a ribbon behind a moving node: a sword's swing, a shell's
   streak, a contrail. Width and colour from head to tail (`widthEnd`, `colorEnd`), a texture or a
   soft edge, additive or alpha, `emitting` to stop adding to it. Sampled once a frame where its node

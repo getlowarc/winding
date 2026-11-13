@@ -364,7 +364,7 @@ hand bone are found by it ([`node.find`](docs/API.md#node-find)). It can be plac
 whatever its parents ([`setWorldPosition`](docs/API.md#node-setworldposition)) -- a ragdoll's bones
 straight from a physics engine -- and moved to another parent where it stands. It can be hidden
 ([`setVisible`](docs/API.md#node-setvisible)) and tinted or lit up
-([`setTint`](docs/API.md#node-settint), [`setGlow`](docs/API.md#node-setglow)) without leaving its
+([`setTint`](docs/API.md#node-settint), [`setGlow`](docs/API.md#node-setglow)) or outlined ([`setOutline`](docs/API.md#node-setoutline)) without leaving its
 batch, so a pool of bullets or an army in two colours costs what one plain copy does. The clock
 slows or stops the world for a hit-stop or a pause ([`timeScale`](docs/API.md#engine-clock)).
 

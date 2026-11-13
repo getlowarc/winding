@@ -42,6 +42,7 @@ import { DebugLines } from './debug.js';
 import { SpritePass } from './sprites.js';
 import { ParticleSystem } from './particles.js';
 import { TrailPass } from './trails.js';
+import { OutlinePass } from './outlines.js';
 import { DecalSet } from './decals.js';
 import { DepthOfField } from './dof.js';
 import { ProbeSet, FACE_CAMERAS, flipInto, PROBE_FLOATS } from './probes.js';
@@ -557,6 +558,8 @@ export class Renderer {
       mips,
     ]);
     this.gpu.merged = this.merged;
+    // After the shadows: the mask draws with their vertex paths.
+    this.outlines = await OutlinePass.create(this.rhi, this.pipelines, this.shadows);
     this._makeDrawBindGroup();
     // The casters' geometry, which the shadow passes bind as the forward ones do,
     // and the merged groups (merged.js), which they draw as well.
@@ -1760,6 +1763,12 @@ export class Renderer {
       });
     }
 
+    // Outlines over everything drawn: before TAA, which smooths their edges with the rest.
+    this.stats.outlined = this.outlines.prepare(scene, this.frameData.subarray(0, 16), width, height, width / (target?.width ?? rhi.width));
+    this.outlines.addPasses(graph, {
+      sceneColor, depth, width, height, gpu: this.gpu, palette: this.skinPalette, morph: this.morph, colorFormat: HDR_FORMAT,
+    });
+
     if (target === null) {
       // TAA on everything drawn, then depth of field, last in HDR, before bloom and the tonemap.
       let resolved = sceneColor;
@@ -2068,6 +2077,7 @@ export class Renderer {
     this.sprites.destroy();
     this.particles.destroy();
     this.trails.destroy();
+    this.outlines.destroy();
     this.splats.destroy();
     this.decals.destroy();
     this.dofPass.destroy();

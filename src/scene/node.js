@@ -141,6 +141,22 @@ export class Node {
     return this;
   }
 
+  /**
+   * A line round every mesh under this node, `color` linear RGB or RGBA, or
+   * null for none: a selected unit, a thing to pick up. `width` in pixels,
+   * 0.5 to 8; `through` shows it through what stands in front.
+   */
+  setOutline(color, options = {}) {
+    this.scene._setOutline(this, color, options);
+    return this;
+  }
+
+  /** The outline setOutline gave this node, { color, width, through }, or null: its own. */
+  get outline() {
+    const look = this.alive ? this.scene.outlines.get(handleIndex(this.entity)) : undefined;
+    return look ? { color: [...look.color], width: look.width, through: look.through } : null;
+  }
+
   /** The params setHookParams gave this node, [0, 0] for none: its own, not its parent's. */
   get hookParams() {
     return this.scene._tintOf(this, 6);

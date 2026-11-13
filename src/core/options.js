@@ -34,6 +34,7 @@ export const OPTIONS = {
   grading: ['whiteBalance', 'contrast', 'saturation', 'lut'],
   autoExposure: ['min', 'max', 'brighten', 'darken'],
   dynamicResolution: ['target', 'min', 'max'],
+  setOutline: ['width', 'through'],
   fog: ['visibility', 'height', 'scaleHeight', 'albedo'],
   dof: ['focusDistance', 'fStop', 'sensorHeight'],
   Scene: ['capacity', 'renderableCapacity', 'lightCapacity'],

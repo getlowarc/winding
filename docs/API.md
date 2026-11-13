@@ -84,7 +84,7 @@ Every call, setting and entry, A to Z by its name.
 
 **N** &nbsp; [`node.name`](#node-name) · [`scene.node()`](#scene-node)
 
-**O** &nbsp; [`engine.renderer.oit`](#renderer-oit) · [`engine.onDemand`](#engine-ondemand) · [`new OrbitController()`](#orbitcontroller) · [`camera.orthographicHalfHeight()`](#camera-orthographichalfheight)
+**O** &nbsp; [`engine.renderer.oit`](#renderer-oit) · [`engine.onDemand`](#engine-ondemand) · [`new OrbitController()`](#orbitcontroller) · [`camera.orthographicHalfHeight()`](#camera-orthographichalfheight) · [`node.outline`](#node-outline)
 
 **P** &nbsp; [`Painter's order`](#view2d-order) · [`parseHDR()`](#parsehdr) · [`engine.prepare()`](#engine-prepare) · [`scene.particlesActive`](#scene-particlesactive) · [`scene.pathOf()`](#scene-pathof) · [`scene.pick()`](#scene-pick) · [`scene.pick()`](#scene-pick-2d) · [`camera.pivot`](#camera2d-pivot) · [`engine.gpu.pixelRatio`](#engine-gpu-pixelratio) · [`camera.pixelSnap`](#camera2d-pixelsnap) · [`node.play()`](#node-play) · [`camera.position`](#camera2d-position) · [`scene.probeOf()`](#scene-probeof)
 
@@ -92,7 +92,7 @@ Every call, setting and entry, A to Z by its name.
 
 **R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run)
 
-**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail)
+**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline)
 
 **T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof) · [`scene.trailOf()`](#scene-trailof)
 
@@ -638,6 +638,7 @@ Counts from the last frame drawn. Read only. The first five fields start at 0; t
 | `tiles2DWritten` | 2D | Tile-map tiles re-uploaded. |
 | `emitters` | 2D | Particle emitters drawn in the 2D view. |
 | `trails` | 3D | Trails drawn. |
+| `outlined` | 3D | Meshes outlined ([`node.setOutline`](#node-setoutline)). |
 | `hudSprites` | HUD | Sprites and glyphs in the HUD. |
 | `hudSpritesWritten` | HUD | Of those, how many were re-uploaded. |
 | `splats` | 3D | Splats in the clouds drawn, before culling. |
@@ -1458,6 +1459,30 @@ The tint [`setTint`](#node-settint) gave this node, `[1, 1, 1]` for none: its ow
 ### `node.glow` → `[r, g, b]`
 
 The glow [`setGlow`](#node-setglow) gave this node, `[0, 0, 0]` for none: its own, as `tint` is.
+
+<a id="node-setoutline"></a>
+### `node.setOutline(color, options)` → `Node`
+
+A line round every mesh under the node, in `color` (linear RGB, or RGBA for a see-through line; past 1 it glows), or `null` for none: a selected unit, a thing to pick up, an enemy under the cursor. Drawn in screen space round what is seen of it, so it holds on flat-shaded low-poly meshes, skinned and morphed ones included. The nearest outlined node above a mesh decides its look.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `width` | `2` | Pixels, from 0.5 to 8, at the canvas's resolution. |
+| `through` | `false` | Shown through whatever stands in front, as the whole outline of the meshes: a unit behind a wall. |
+
+Throws: `'setOutline: color must be 3 or 4 numbers, 0 or more, or null for none, …'`; `RangeError` `'setOutline: width must be from 0.5 to 8 pixels, …'`; `'setOutline: this node was removed'`.
+
+```js
+selected?.setOutline(null);
+selected = unit.setOutline([1.5, 1.2, 0.2], { width: 3 });
+```
+
+Notes: without outlines nothing is drawn or paid for. With any, each outlined mesh is drawn once more into a mask, a draw call apiece, and a pass over the screen rectangle they cover finds the edges; a wider line reads more of the mask for each of those pixels. Up to 255 different looks a frame. A mesh with levels of detail is outlined round all its levels at once. It is drawn before [TAA](#renderer-taa) and the post stack, so it is smoothed and tonemapped with the scene.
+
+<a id="node-outline"></a>
+### `node.outline` → `{ color, width, through } | null`
+
+The outline [`setOutline`](#node-setoutline) gave this node, or `null`: its own, not what it takes from above. A copy.
 
 <a id="node-sethookparams"></a>
 ### `node.setHookParams(x, y = 0)` → `Node`

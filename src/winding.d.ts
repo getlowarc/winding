@@ -242,6 +242,8 @@ export interface Stats {
   readonly emitters?: number;
   /** Trails drawn (3D). */
   readonly trails?: number;
+  /** Meshes outlined (3D). */
+  readonly outlined?: number;
   readonly hudSprites?: number;
   readonly hudSpritesWritten?: number;
   readonly splats?: number;
@@ -686,6 +688,9 @@ export class Node {
   setGlow(color: ArrayLike<number>): this;
   readonly tint: [number, number, number];
   readonly glow: [number, number, number];
+  /** A line round every mesh under this node, or null for none. */
+  setOutline(color: ArrayLike<number> | null, options?: { width?: number; through?: boolean }): this;
+  readonly outline: { color: number[]; width: number; through: boolean } | null;
   /** Two numbers for a surface hook: params.x and params.y. */
   setHookParams(x: number, y?: number): this;
   readonly hookParams: [number, number];

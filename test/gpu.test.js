@@ -1435,6 +1435,43 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     }
   });
 
+  await step('an outline rings what is under its node, hides behind what is in front unless it shows through', async () => {
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const block = await engine.load(buildFeatureGLB({ baseColorFactor: [0.2, 0.2, 0.2, 1] }));
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const frame = async (y, outline) => {
+      const scene = engine.createScene();
+      scene.add(ground).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+      const unit = scene.createNode();
+      scene.add(block, { parent: unit }).setAxisAngle([1, 0, 0], Math.PI / 2).setScale(0.6, 0.6, 1).setPosition(0, y, 0);
+      if (outline) unit.setOutline(...outline);
+      scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+      engine.renderFrame(scene, cam);
+      return { pixels: await engine.gpu.readPixels(), outlined: engine.stats.outlined };
+    };
+    const changed = (a, b) => {
+      let n = 0, red = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) <= 6) continue;
+        n++;
+        if (b[i] - a[i] > b[i + 1] - a[i + 1]) red++;
+      }
+      return { n, red };
+    };
+    const plain = await frame(1, null), ringed = await frame(1, [[1, 0, 0], { width: 3 }]);
+    const above = changed(plain.pixels, ringed.pixels);
+    const hidden = await frame(-1, null);
+    const behind = changed(hidden.pixels, (await frame(-1, [[1, 0, 0], { width: 3 }])).pixels);
+    const through = changed(hidden.pixels, (await frame(-1, [[1, 0, 0], { width: 3, through: true }])).pixels);
+    const report = `in view: ${above.n} pixels changed, ${above.red} red (${ringed.outlined} outlined); under the floor: ${behind.n}; through it: ${through.n}, ${through.red} red`;
+    if (!(ringed.outlined === 1 && above.n > 100 && above.red >= above.n * 0.9)) throw new Error(`no ring: ${report}`);
+    if (behind.n !== 0) throw new Error(`an outline behind the floor showed: ${report}`);
+    if (!(through.n > 100 && through.red >= through.n * 0.9)) throw new Error(`through did not show: ${report}`);
+    return report;
+  });
+
   await step('a trail draws where its node went, and is gone once cleared', async () => {
     // Seen from above, a bright trail swept across the middle of the view
     // over twenty frames; the middle pixel against the same view without it.

@@ -322,6 +322,48 @@ fn vsSkinned(
   // place a skinned mesh entirely.
   return cascade.viewProjection * skin * vec4<f32>(morphPosition(draw, vertex, position), 1.0);
 }
+
+// Outlines (render/outlines.js): an outlined mesh's coverage, as its
+// outline's slot, which the draw's batch carries in place of a shift. The
+// "cascade" is the camera's, and the world position is made as the forward
+// pass makes it -- the model, then the view -- so the depth test against the
+// forward pass's depth agrees with it.
+struct OutlineOut {
+  @builtin(position) clip : vec4<f32>,
+  @location(0) @interpolate(flat) slot : u32,
+};
+
+@vertex
+fn vsOutline(
+  @builtin(instance_index) instance : u32,
+  @builtin(vertex_index)   vertex   : u32,
+  @location(0) position : vec3<f32>,
+) -> OutlineOut {
+  let draw = drawData[order[batch.firstVisible + instance]];
+  return OutlineOut(cascade.viewProjection * (draw.model * vec4<f32>(morphPosition(draw, vertex, position), 1.0)), batch.shift);
+}
+
+@vertex
+fn vsOutlineSkinned(
+  @builtin(instance_index) instance : u32,
+  @builtin(vertex_index)   vertex   : u32,
+  @location(0) position : vec3<f32>,
+  @location(6) joints   : vec4<u32>,
+  @location(7) weights  : vec4<f32>,
+) -> OutlineOut {
+  let draw = drawData[order[batch.firstVisible + instance]];
+  let base = draw.paletteOffset;
+  let skin = palette[base + joints.x] * weights.x
+           + palette[base + joints.y] * weights.y
+           + palette[base + joints.z] * weights.z
+           + palette[base + joints.w] * weights.w;
+  return OutlineOut(cascade.viewProjection * (skin * vec4<f32>(morphPosition(draw, vertex, position), 1.0)), batch.shift);
+}
+
+@fragment
+fn fsOutline(v : OutlineOut) -> @location(0) vec4<u32> {
+  return vec4<u32>(v.slot, 0u, 0u, 0u);
+}
 `;
 
 /**
