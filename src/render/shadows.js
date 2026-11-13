@@ -57,6 +57,9 @@ export const MAX_CASCADES = CASCADE_PHASES;
 /** One local shadow view as the forward shader reads it: a mat4 and a vec4. */
 export const LOCAL_VIEW_FLOATS = 20;
 /** The grid a cascade's box is snapped to, in texels: see _fitCascade. */
+/** Point and spot faces: half the bytes of the cascades' float depth. See _init. */
+const LOCAL_DEPTH_FORMAT = 'depth16unorm';
+
 const CASCADE_SNAP = 16;
 /** A cascade's mode this frame: kept as it is, drawn whole, or scrolled. */
 const KEEP = 0, FULL = 1, SCROLL = 2;
@@ -802,8 +805,19 @@ export class ShadowMaps {
     this.mergedAlphaDescriptor = this.alphaDescriptors.length > 0
       ? { ...this.alphaDescriptors[0], label: 'shadow-mask-merged', vertexEntry: 'vsMergedAlpha', buffers: [] }
       : null;
-    await pipelines.warm([...this.descriptors, ...this.alphaDescriptors, this.clearDescriptor,
-      ...this.mergedDescriptors, ...(this.mergedAlphaDescriptor ? [this.mergedAlphaDescriptor] : [])]);
+    // The point and spot faces' copies: 16-bit depth, half the bytes to clear
+    // and write per face (a 512^2 layer cleared in 32 us, not 66, on an Iris
+    // Xe). The bias is the same: its constant is one depth step in either.
+    const local = (d) => d && { ...d, label: `${d.label}-local`, depth: { ...d.depth, format: LOCAL_DEPTH_FORMAT } };
+    this._local = {
+      descriptors: this.descriptors.map(local),
+      alphaDescriptors: this.alphaDescriptors.map(local),
+      mergedDescriptors: this.mergedDescriptors.map(local),
+      mergedAlphaDescriptor: local(this.mergedAlphaDescriptor),
+    };
+    const sets = [this, this._local];
+    await pipelines.warm([this.clearDescriptor, ...sets.flatMap((set) => [...set.descriptors, ...set.alphaDescriptors,
+      ...set.mergedDescriptors, ...(set.mergedAlphaDescriptor ? [set.mergedAlphaDescriptor] : [])])]);
 
     // One bound executor per layer, built as the arrays grow. The graph stores
     // a function per pass, and building them per frame would allocate a
@@ -923,7 +937,7 @@ export class ShadowMaps {
     this.localTexture = createTexture(rhi, {
       label: 'shadow-local',
       size: [size, size, capacity],
-      format: DEPTH_FORMAT,
+      format: LOCAL_DEPTH_FORMAT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
     this.localView = this.localTexture.createView({ dimension: '2d-array', label: 'shadow-local' });
@@ -954,7 +968,7 @@ export class ShadowMaps {
     for (let v = this._localExecutors.length; v < capacity; v++) {
       this._localExecutors.push((pass) => (this._listed && this._viewRuns[v * 2] >= 0
         ? this._encodeListed(pass, v)
-        : this._encodeView(pass, this.localBindGroup, v * this.alignment)));
+        : this._encodeView(pass, this.localBindGroup, v * this.alignment, null, 0, true, null, this._local)));
     }
     this.localCapacity = capacity;
     this.localBindGroup = undefined;
@@ -1012,10 +1026,11 @@ export class ShadowMaps {
 
       const views = lights[o + 14] === LIGHT_SPOT ? spotViewCount(scene._lightCone[i * 2 + 1]) : 6;
       this._growLocal(count + views);
-      // Near only clips here: reverse-Z float depth is relative, so precision
-      // does not depend on it. A thousandth of the reach clips only casters
-      // inside the bulb.
-      const near = radius / 1024;
+      // 16-bit depth is near / distance in even steps, so near sets the
+      // precision: at radius / 64 a step at the far edge of the reach is a
+      // thousandth of it (1 cm at 10 m). Casters nearer the light than that
+      // are clipped.
+      const near = radius / 64;
       const size = scene.lightSizes.get(scene.lightEntity[i]) ?? 0;
       if (views === 1) {
         const tanHalf = Math.tan(scene._lightCone[i * 2 + 1]) * margin;
@@ -1141,8 +1156,8 @@ export class ShadowMaps {
    * every view draws them.
    */
   _encodeListed(pass, v) {
-    const gpu = this._gpu, materials = gpu.materials, offset = v * this.alignment;
-    const alpha = this.alphaDescriptors.length > 0;
+    const gpu = this._gpu, materials = gpu.materials, offset = v * this.alignment, set = this._local;
+    const alpha = set.alphaDescriptors.length > 0;
     const runs = this._listRuns, start = this._viewRuns[v * 2], end = start + this._viewRuns[v * 2 + 1];
     this.geometry.bindPositions(pass);
     pass.setBindGroup(GROUP_FRAME, this.localListBindGroup, [offset]);
@@ -1157,7 +1172,7 @@ export class ShadowMaps {
       const doubleSided = (materials.variants[gpu.batchMaterial[b]] & VARIANT_DOUBLE_SIDED) !== 0 || primitive.open === true;
       const variant = (doubleSided ? 4 : 0) + skinned * 2 + gpu.batchMirrored[b];
       if (variant !== boundVariant) {
-        pass.setPipeline(this._pipelines.get(this.descriptors[variant]));
+        pass.setPipeline(this._pipelines.get(set.descriptors[variant]));
         boundVariant = variant;
       }
       if (skinned) pass.setVertexBuffer(1, this.geometry.skinBuffer);
@@ -1170,7 +1185,7 @@ export class ShadowMaps {
       const b = runs[r * 3], material = gpu.batchMaterial[b];
       if (materials.alphaModes[material] !== ALPHA_MASK) continue;
       const primitive = gpu.batchPrimitive[b], skinned = gpu.batchSkinned[b] === 1;
-      const pipeline = this._pipelines.get(this.alphaDescriptors[skinned ? 1 : 0]);
+      const pipeline = this._pipelines.get(set.alphaDescriptors[skinned ? 1 : 0]);
       if (pipeline !== bound) { pass.setPipeline(pipeline); bound = pipeline; }
       if (material !== boundMaterial) { pass.setBindGroup(GROUP_MATERIAL, materials.bindGroup(material)); boundMaterial = material; }
       if (skinned) pass.setVertexBuffer(1, this.geometry.skinBuffer);
@@ -1178,7 +1193,7 @@ export class ShadowMaps {
     }
     // The blended casters, from the order every view reads them in.
     pass.setBindGroup(GROUP_FRAME, this.localBindGroup, [offset]);
-    this._encodeAlphaCasters(pass, gpu, materials, () => false);
+    this._encodeAlphaCasters(pass, gpu, materials, () => false, null, () => null, set);
   }
 
   /**
@@ -1737,7 +1752,7 @@ export class ShadowMaps {
    * transform and clip, all of it, cascade after cascade. Point and spot
    * views are perspective, which that test is not.
    */
-  _encodeView(pass, bindGroup, offset, cull = null, at = 0, useMerged = true, phase = null) {
+  _encodeView(pass, bindGroup, offset, cull = null, at = 0, useMerged = true, phase = null, set = this) {
     const gpu = this._gpu;
     // With a cascade's cull phase, a batch that reaches past the cascade draws
     // the casters the GPU kept; one wholly inside it draws them all, directly,
@@ -1776,7 +1791,7 @@ export class ShadowMaps {
     // Depth-only casters first. The alpha ones bind a material in group 2,
     // where these pipelines expect the empty group, so they come after.
     const materials = gpu.materials;
-    const alpha = this.alphaDescriptors.length > 0;
+    const alpha = set.alphaDescriptors.length > 0;
     const merged = this.merged;
     // The merged groups draw a whole view in a draw each (merged.js); a scrolled
     // strip draws mesh by mesh -- see _encodeCascade.
@@ -1793,7 +1808,7 @@ export class ShadowMaps {
       const doubleSided = (materials.variants[gpu.batchMaterial[b]] & VARIANT_DOUBLE_SIDED) !== 0 || primitive.open === true;
       const variant = (doubleSided ? 4 : 0) + skinned * 2 + gpu.batchMirrored[b];
       if (variant !== boundVariant) {
-        pass.setPipeline(this._pipelines.get(this.descriptors[variant]));
+        pass.setPipeline(this._pipelines.get(set.descriptors[variant]));
         boundVariant = variant;
       }
       if (skinned) pass.setVertexBuffer(1, this.geometry.skinBuffer);
@@ -1807,12 +1822,12 @@ export class ShadowMaps {
         this._drawBatch(pass, gpu, b, primitive, culled(b));
       }
     }
-    if (grouped) this._encodeMergedCasters(pass, materials, cull, at, false);
+    if (grouped) this._encodeMergedCasters(pass, materials, cull, at, false, set);
     if (alpha) {
       this.geometry.bind(pass);
-      this._encodeAlphaCasters(pass, gpu, materials, casts, mergedBatch, culled);
+      this._encodeAlphaCasters(pass, gpu, materials, casts, mergedBatch, culled, set);
     }
-    if (alpha && grouped) this._encodeMergedCasters(pass, materials, cull, at, true);
+    if (alpha && grouped) this._encodeMergedCasters(pass, materials, cull, at, true, set);
     this._useList = null;
   }
 
@@ -1821,13 +1836,13 @@ export class ShadowMaps {
    * depth-only ones, or with `masked` the alpha-tested ones, which bind their
    * material. Culled to the view, a group at a time, by the box round its casters.
    */
-  _encodeMergedCasters(pass, materials, cull, at, masked) {
+  _encodeMergedCasters(pass, materials, cull, at, masked, set) {
     const merged = this.merged;
     const drawGroup = merged.drawGroup(this._drawLayout);
     let bound = false;
     for (let g = 0; g < merged.groupCount; g++) {
       const group = merged.groups[g];
-      const isMasked = materials.alphaModes[group.material] === ALPHA_MASK && this.mergedAlphaDescriptor !== null;
+      const isMasked = materials.alphaModes[group.material] === ALPHA_MASK && set.mergedAlphaDescriptor !== null;
       if (isMasked !== masked) continue;
       if (cull !== null && !boxInOrtho(this._groupBoxes, g * 6, cull, at)) continue;
       if (!bound) {
@@ -1835,12 +1850,12 @@ export class ShadowMaps {
         bound = true;
       }
       if (masked) {
-        pass.setPipeline(this._pipelines.get(this.mergedAlphaDescriptor));
+        pass.setPipeline(this._pipelines.get(set.mergedAlphaDescriptor));
         pass.setBindGroup(GROUP_MATERIAL, materials.bindGroup(group.material));
       } else {
         const doubleSided = (materials.variants[group.material] & VARIANT_DOUBLE_SIDED) !== 0
           || group.batches.some((b) => this._gpu.batchPrimitive[b].open === true);
-        pass.setPipeline(this._pipelines.get(this.mergedDescriptors[(doubleSided ? 2 : 0) + group.mirrored]));
+        pass.setPipeline(this._pipelines.get(set.mergedDescriptors[(doubleSided ? 2 : 0) + group.mirrored]));
       }
       pass.setBindGroup(GROUP_DRAW, drawGroup, [g * merged.alignment]);
       pass.drawIndexed(group.indexCount, 1, group.indexBase, 0, 0);
@@ -1901,11 +1916,11 @@ export class ShadowMaps {
   }
 
   /** MASK batches, then blended items, each shaped by its material's alpha. */
-  _encodeAlphaCasters(pass, gpu, materials, casts, mergedBatch = null, culled = () => null) {
+  _encodeAlphaCasters(pass, gpu, materials, casts, mergedBatch = null, culled = () => null, set = this) {
     let bound = null;
     let boundMaterial = -1;
     const draw = (hashed, skinned, material, primitive) => {
-      const pipeline = this._pipelines.get(this.alphaDescriptors[(hashed ? 2 : 0) + (skinned ? 1 : 0)]);
+      const pipeline = this._pipelines.get(set.alphaDescriptors[(hashed ? 2 : 0) + (skinned ? 1 : 0)]);
       if (pipeline !== bound) { pass.setPipeline(pipeline); bound = pipeline; }
       if (material !== boundMaterial) {
         pass.setBindGroup(GROUP_MATERIAL, materials.bindGroup(material));

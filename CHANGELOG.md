@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Point and spot shadow maps are 16-bit depth**, half the bytes to clear and write. The harness's
+  dungeon (36 torches, 83 shadow faces drawn a frame) on Iris Xe: 2.3 ms of point shadows a frame
+  instead of 3.1, over four alternating runs each. Precision is unchanged in practice: the near plane
+  moved from 1/1024 of the light's radius to 1/64, which keeps a depth step at the edge of its reach
+  to a thousandth of the radius. So a caster within 1/64 of the radius of the light (19 cm for a
+  12 m torch) no longer casts.
+
 ### Fixed
 
 - **A still morphed mesh, or a still character both skinned and morphed, no longer costs a moving
