@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-13
+
+**What a game needs, in the engine.** Surface hooks put your own WGSL on a material; trails, outlines
+and motion blur; inverse kinematics for limbs and heads; keyboard, mouse and gamepad input read by
+name; scene snapshots for checkpoints and rewind; and a resolution that adapts to hold a frame time.
+Also cheaper: point and spot shadow maps are 16-bit (the harness's dungeon 3.1 -> 2.3 ms of point
+shadows on Iris Xe), draw data is 96 bytes a renderable instead of 128, and a still morphed mesh no
+longer costs a moving one's frame.
+
 ### Added
 
 - **Surface hooks: your own WGSL on a material's surface.** `engine.createSurfaceHook(wgsl)` compiles
@@ -2793,7 +2802,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/getlowarc/winding/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/getlowarc/winding/compare/v1.9.2...v1.10.0
 [1.9.2]: https://github.com/getlowarc/winding/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1
