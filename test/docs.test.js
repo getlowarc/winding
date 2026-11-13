@@ -111,7 +111,7 @@ const TABLES = {
   Scene: ['scene-constructor', 0], createNode: ['scene-createnode', 0], add: ['scene-add', 0], frame: ['scene-frame', 0],
   raycast: ['scene-raycast', 0], Camera: ['camera', 0], frameBounds: ['camera-framebounds', 0],
   play: ['node-play', 0], stop: ['node-stop', 0], setParent: ['node-setparent', 0], spriteSheet: ['spritesheet', 0],
-  addLight: ['scene-addlight', 0], addEmitter: ['scene-addemitter', 0], addDecal: ['scene-adddecal', 0],
+  addLight: ['scene-addlight', 0], addEmitter: ['scene-addemitter', 0], addTrail: ['scene-addtrail', 0], addDecal: ['scene-adddecal', 0],
   addProbe: ['scene-addprobe', 0], addSprite: ['scene-addsprite', 0], addText: ['scene-addtext', 0],
   addShape: ['scene-addshape', 0], addPath: ['scene-addpath', 0], addTilemap: ['scene-addtilemap', 0],
   Camera2D: ['camera2d', 0], OrbitController: ['orbitcontroller', 0], StatsOverlay: ['statsoverlay', 0],

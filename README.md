@@ -375,6 +375,9 @@ toon colours, a texture scrolled by the scene's time. Each node hands it two num
 ([`setHookParams`](docs/API.md#node-sethookparams)), so one hook dissolves a hundred units, each at
 its own point, still in one draw.
 
+**Trails** ([`scene.addTrail`](docs/API.md#scene-addtrail)): a ribbon behind a moving node -- a sword's
+swing, a shell's streak, a contrail -- smoothed so a fast swing curves, tapering and fading as it ages.
+
 **Sprites, text, particles, decals and reflection probes**, each a node:
 [sprites](docs/API.md#scene-addsprite) that face the camera or stand upright;
 [text](docs/API.md#scene-addtext) in any CSS font, sharp at any size as a distance field, with

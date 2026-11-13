@@ -49,6 +49,7 @@ export const OPTIONS = {
   addEmitter: ['rate', 'lifetime', 'size', 'sizeEnd', 'speed', 'direction', 'spread', 'radius', 'acceleration', 'drag',
     'color', 'colorEnd', 'texture', 'blend', 'layer', 'position', 'parent'],
   addDecal: ['texture', 'size', 'color', 'position', 'parent'],
+  addTrail: ['width', 'widthEnd', 'lifetime', 'color', 'colorEnd', 'texture', 'blend', 'emitting', 'position', 'parent'],
   addProbe: ['size', 'fade', 'position', 'parent'],
   addSplats: ['splats', 'position', 'parent'],
   addSprite: ['texture', 'position', 'parent', 'size', 'pixels', 'color', 'rect', 'pivot', 'angle', 'facing', 'blend',
@@ -70,7 +71,7 @@ export const OPTIONS = {
 };
 
 // A kind's setX takes the names its addX does, less where it is, which is the node's.
-for (const kind of ['Light', 'Emitter', 'Decal', 'Probe', 'Sprite', 'Text', 'Shape', 'Path', 'Tilemap']) {
+for (const kind of ['Light', 'Emitter', 'Trail', 'Decal', 'Probe', 'Sprite', 'Text', 'Shape', 'Path', 'Tilemap']) {
   OPTIONS[`set${kind}`] = OPTIONS[`add${kind}`].filter((key) => key !== 'position' && key !== 'parent');
 }
 

@@ -150,6 +150,43 @@ export function emitterRecord(options = {}) {
 }
 let nextEmitterSeed = 1;
 
+/**
+ * A trail's options, checked; see Scene.addTrail. Where its node has been is
+ * kept here, as render/trails.js samples it: x, y, z and the scene's time,
+ * oldest first, `count` of them from `start`.
+ */
+export function trailRecord(options = {}, caller = 'addTrail') {
+  const { width, widthEnd = width, lifetime, color = [1, 1, 1, 1], colorEnd, texture = null, blend = 'additive', emitting = true } = options;
+  if (width === undefined) throw new Error(`${caller}: width is required: how wide the trail is at its head, in world units`);
+  if (![width, widthEnd].every((w) => typeof w === 'number' && Number.isFinite(w) && w >= 0)) {
+    throw new Error(`${caller}: width and widthEnd must be 0 or more, got ${width} and ${widthEnd}`);
+  }
+  if (!(typeof lifetime === 'number' && lifetime > 0 && Number.isFinite(lifetime))) {
+    throw new Error(`${caller}: lifetime must be a positive number of seconds: how long a point of the trail lasts, got ${lifetime}`);
+  }
+  const colour = (v, what) => {
+    if (!(v?.length === 4 && [...v].every((c) => Number.isFinite(c) && c >= 0))) throw new Error(`${caller}: ${what} must be 4 numbers, 0 or more, got ${v}`);
+    return Float32Array.from(v);
+  };
+  if (texture !== null && !(texture?.view && texture.width > 0)) throw new Error(`${caller}: texture must be one engine.loadTexture returned`);
+  if (!['additive', 'alpha'].includes(blend)) throw new Error(`${caller}: blend is 'additive' or 'alpha', got ${blend}`);
+  const start = colour(color, 'color');
+  return {
+    options: { ...options },
+    width,
+    widthEnd,
+    lifetime,
+    color: start,
+    colorEnd: colorEnd === undefined ? start : colour(colorEnd, 'colorEnd'),
+    texture,
+    blend,
+    emitting: emitting !== false,
+    samples: null,
+    start: 0,
+    count: 0,
+  };
+}
+
 /** A decal's options, checked; see Scene.addDecal. */
 export function decalRecord({ texture, size, color = [1, 1, 1, 1] } = {}) {
   if (!(texture?.view && texture.width > 0 && texture.height > 0)) {
@@ -824,6 +861,8 @@ export class Scene {
     this.sprites = new Map();
     /** Particle emitters (see addEmitter), by the entity each hangs off. */
     this.emitters = new Map();
+    /** Trails (see addTrail), by the entity each follows. */
+    this.trails = new Map();
     /** Gaussian splat captures (see addSplats), by the entity each hangs off. */
     this.splats = new Map();
     /** Decals (see addDecal), by the entity each hangs off, in the order added. */
@@ -1493,6 +1532,7 @@ export class Scene {
       this.spritesChanged.delete(entity);
       this.sprites.delete(entity);
       this.emitters.delete(entity);
+      this.trails.delete(entity);
       this.splats.delete(entity);
       this.decals.delete(entity);
       this.texts.delete(entity);
@@ -1660,6 +1700,8 @@ export class Scene {
   tilemapOf(node) { return copyOf(this.tilemaps, node); }
   /** An emitter's options, or null. A copy: change it through setEmitter. */
   emitterOf(node) { return copyOf(this.emitters, node); }
+  /** A trail's options, or null. A copy: change it through setTrail. */
+  trailOf(node) { return copyOf(this.trails, node); }
   /** A splat node's options -- { splats } -- or null. */
   splatsOf(node) { return copyOf(this.splats, node); }
   /** A decal's options, or null. A copy: change it through setDecal. */
@@ -1848,6 +1890,44 @@ export class Scene {
     next.added = current.added;
     this.emitters.set(node.entity, next);
     if (next.layer !== current.layer) this.spriteOrder++;
+  }
+
+  /**
+   * A ribbon behind a node as it moves: a sword's swing, a shell's streak, a
+   * contrail. Returns the node it streams from; parent it to what leaves the
+   * trail, or move it yourself. Aged by scene.time, so advance the scene.
+   */
+  addTrail(given = {}) {
+    checkOptions('addTrail', given);
+    const { position = [0, 0, 0], parent = null, ...options } = given;
+    const record = trailRecord(options);
+    this.changes++;
+    const node = this.createNode({ parent }, 'addTrail');
+    node.setPosition(...position);
+    this.trails.set(node.entity, record);
+    return node;
+  }
+
+  /** Change a trail's options; the same names addTrail takes. What it has drawn stays. */
+  setTrail(node, changes) {
+    checkOptions('setTrail', changes);
+    const current = this.trails.get(node.entity);
+    if (current === undefined) throw new Error('setTrail: this node has no trail');
+    const next = trailRecord({ ...current.options, ...changes }, 'setTrail');
+    next.samples = current.samples;
+    next.start = current.start;
+    next.count = current.count;
+    this.trails.set(node.entity, next);
+    this.changes++;
+  }
+
+  /** Drop all a trail has drawn, for a node moved somewhere new: a pooled shell fired again, a respawn. */
+  clearTrail(node) {
+    const record = this.trails.get(node.entity);
+    if (record === undefined) throw new Error('clearTrail: this node has no trail');
+    record.count = 0;
+    record.start = 0;
+    this.changes++;
   }
 
   /** Emit `count` particles at once, on the next frame. */

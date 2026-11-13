@@ -1401,6 +1401,36 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report;
   });
 
+  await step('a trail draws where its node went, and is gone once cleared', async () => {
+    // Seen from above, a bright trail swept across the middle of the view
+    // over twenty frames; the middle pixel against the same view without it.
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const scene = engine.createScene();
+    const middle = async () => {
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const i = (Math.floor(engine.gpu.height / 2) * engine.gpu.width + Math.floor(engine.gpu.width / 2)) * 4;
+      return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+    };
+    const before = await middle();
+    const trail = scene.addTrail({ width: 0.5, lifetime: 10, color: [2, 2, 2, 1], position: [-2, 1, 0] });
+    for (let i = 0; i <= 20; i++) {
+      trail.setPosition(-2 + i * 0.2, 1, 0);
+      scene.advance(1 / 60);
+      engine.renderFrame(scene, cam);
+    }
+    const drawn = await middle();
+    const trails = engine.stats.trails;
+    scene.clearTrail(trail);
+    const cleared = await middle();
+    const report = `middle ${before.toFixed(0)} without, ${drawn.toFixed(0)} with (${trails} drawn), ${cleared.toFixed(0)} cleared`;
+    if (!(drawn > before + 40 && trails === 1)) throw new Error(`no trail: ${report}`);
+    if (Math.abs(cleared - before) > 2) throw new Error(`a cleared trail still drew: ${report}`);
+    return report;
+  });
+
   await step('point and spot lights cast shadows when asked, and only where the caster is', async () => {
     // A blocker over the ground, one light above it and no sun, from straight
     // above. The ground under the blocker must darken when the light casts,

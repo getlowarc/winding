@@ -240,6 +240,8 @@ export interface Stats {
   readonly sprites2DWritten?: number;
   readonly tiles2DWritten?: number;
   readonly emitters?: number;
+  /** Trails drawn (3D). */
+  readonly trails?: number;
   readonly hudSprites?: number;
   readonly hudSpritesWritten?: number;
   readonly splats?: number;
@@ -431,6 +433,18 @@ export interface EmitterOptions extends Placed {
   layer?: number;
 }
 
+export interface TrailOptions extends Placed {
+  width: number;
+  widthEnd?: number;
+  /** Seconds a point of the trail lasts. */
+  lifetime: number;
+  color?: Color;
+  colorEnd?: Color;
+  texture?: Texture | null;
+  blend?: 'additive' | 'alpha';
+  emitting?: boolean;
+}
+
 export interface DecalOptions extends Placed {
   texture: Texture;
   size: Vec3;
@@ -566,6 +580,12 @@ export class Scene {
   setEmitter(node: Node, changes: Changes<EmitterOptions>): void;
   emitterOf(node: Node): Omit<EmitterOptions, 'position' | 'parent'> | null;
   burst(node: Node, count: number): void;
+  /** A ribbon behind a moving node. */
+  addTrail(options: TrailOptions): Node;
+  setTrail(node: Node, changes: Changes<TrailOptions>): void;
+  /** Drop what a trail has drawn: a pooled shell fired again, a respawn. */
+  clearTrail(node: Node): void;
+  trailOf(node: Node): Omit<TrailOptions, 'position' | 'parent'> | null;
 
   addSplats(options: { splats: Splats } & Placed): Node;
   splatsOf(node: Node): { splats: Splats } | null;

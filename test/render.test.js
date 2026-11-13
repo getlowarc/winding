@@ -9,6 +9,8 @@ import { parseCube, whiteBalanceMatrix, planckianXY, packGrading } from '../src/
 import { lensCoefficients } from '../src/render/dof.js';
 import { autoExposureSettings, AUTO_EXPOSURE_DEFAULTS } from '../src/render/exposure.js';
 import { textRecord } from '../src/scene/scene.js';
+import { trailRecord } from '../src/scene/scene.js';
+import { sampleTrail, buildStrip, TRAIL_SAMPLES } from '../src/render/trails.js';
 import { probeRecord } from '../src/scene/scene.js';
 import { parseHDR, halfBits, toHalfRGBA } from '../src/render/hdr.js';
 import assert from 'node:assert/strict';
@@ -2027,5 +2029,54 @@ test('auto exposure settings: true takes the defaults, a part fills from them, a
   assert.throws(() => autoExposureSettings('on'), /true, \{ min, max, brighten, darken \}, or null/);
 });
 
+
+test('a trail keeps where its node moved, ages its points out, and keeps no more than it can hold', () => {
+  const record = trailRecord({ width: 1, lifetime: 0.5 });
+  sampleTrail(record, 0, 0, 0, 0);
+  sampleTrail(record, 0, 0, 0, 0.1);
+  assert.equal(record.count, 1, 'standing still adds nothing');
+  sampleTrail(record, 1, 0, 0, 0.2);
+  sampleTrail(record, 2, 0, 0, 0.4);
+  assert.equal(record.count, 3);
+  sampleTrail(record, 2, 0, 0, 0.65);
+  assert.equal(record.count, 2, 'the point from time 0 is past its 0.5 s');
+  assert.deepEqual([...record.samples.subarray(record.start * 4, record.start * 4 + 4)].map((v) => Math.round(v * 100) / 100), [1, 0, 0, 0.2]);
+  sampleTrail(record, 2, 0, 0, 2);
+  assert.equal(record.count, 1, 'stopped long enough: only where it stands, which draws nothing');
+  const off = trailRecord({ width: 1, lifetime: 1, emitting: false });
+  sampleTrail(off, 5, 0, 0, 0);
+  assert.equal(off.count, 0, 'not emitting: nothing added');
+  const long = trailRecord({ width: 1, lifetime: 1e9 });
+  for (let i = 0; i < TRAIL_SAMPLES * 3; i++) sampleTrail(long, i, 0, 0, i);
+  assert.equal(long.count, TRAIL_SAMPLES, 'full: the oldest go');
+  assert.equal(long.samples[(long.start + long.count - 1) * 4], TRAIL_SAMPLES * 3 - 1, 'and the newest is the last added');
+  assert.equal(long.samples[long.start * 4], TRAIL_SAMPLES * 2, 'in order');
+  assert.throws(() => trailRecord({ lifetime: 1 }), /^Error: addTrail: width is required/);
+  assert.throws(() => trailRecord({ width: 1, lifetime: 0 }), /^Error: addTrail: lifetime must be a positive number/);
+  assert.throws(() => trailRecord({ width: 1, lifetime: 1, blend: 'add' }), /^Error: addTrail: blend is 'additive' or 'alpha'/);
+});
+
+test("a trail's strip faces the eye, narrows and fades with age, and passes through every point it kept", () => {
+  const record = trailRecord({ width: 2, widthEnd: 0, lifetime: 1, color: [1, 1, 1, 1], colorEnd: [1, 0, 0, 0] });
+  for (const [x, t] of [[0, 0], [1, 0.25], [2, 0.5]]) sampleTrail(record, x, 0, 0, t);
+  const out = new Float32Array(1000);
+  const eye = [1, 10, 0];
+  const n = buildStrip(record, 0.5, eye, out, 0);
+  assert.equal(n, 2 * (2 * 4 + 1), 'two vertices a point: four a gap between samples, and the head');
+  const vertex = (k) => out.subarray(k * 9, k * 9 + 9);
+  // The head (newest, last pair): age 0, full width, across the line and the eye -- along z here.
+  const [a, b] = [vertex(n - 2), vertex(n - 1)];
+  assert.ok(Math.abs(a[0] - 2) < 1e-6 && Math.abs(Math.abs(a[2]) - 1) < 1e-6 && Math.abs(a[1]) < 1e-6, `head across z, half its width out: ${[...a.subarray(0, 3)]}`);
+  assert.ok(Math.abs(a[2] + b[2]) < 1e-6, 'the pair either side of the line');
+  assert.deepEqual([a[3], a[4], b[4]], [0, 0, 1], 'uv: age 0 at the head, 0 and 1 across');
+  // The tail (oldest, first pair): age 0.5, half the width, half faded.
+  const t = vertex(0);
+  assert.ok(Math.abs(t[0]) < 1e-6 && Math.abs(Math.abs(t[2]) - 0.5) < 1e-6, `tail half as wide: ${[...t.subarray(0, 3)]}`);
+  assert.ok(Math.abs(t[3] - 0.5) < 1e-6 && Math.abs(t[8] - 0.5) < 1e-6 && Math.abs(t[6] - 0.5) < 1e-6, 'aged half: half faded');
+  // Smoothing passes through the samples: the middle one lies on the strip's centre.
+  const m = [vertex(8), vertex(9)];
+  assert.ok(Math.abs((m[0][0] + m[1][0]) / 2 - 1) < 1e-6, 'through the middle sample');
+  assert.equal(buildStrip(trailRecord({ width: 1, lifetime: 1 }), 0, eye, out, 0), 0, 'nothing kept: nothing built');
+});
 
 console.log(`\n${passed} checks passed\n`);

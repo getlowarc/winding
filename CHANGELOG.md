@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hierarchy from the nearest node that set them. They ride in the draw data's last free word, so
   setting them keeps the node in its batch.
 - **`scene.time`**: the seconds `scene.advance` has moved the scene on, the clock hooks read.
+- **Trails: `scene.addTrail(options)`**, a ribbon behind a moving node: a sword's swing, a shell's
+  streak, a contrail. Width and colour from head to tail (`widthEnd`, `colorEnd`), a texture or a
+  soft edge, additive or alpha, `emitting` to stop adding to it. Sampled once a frame where its node
+  is, aged by `scene.time`, and drawn as a strip facing the camera, Catmull-Rom smoothed so a swing at
+  60 frames a second is an arc. With `setTrail`, `clearTrail` (for a pooled shell fired again) and
+  `trailOf`, and `engine.stats.trails`.
 
 ### Changed
 

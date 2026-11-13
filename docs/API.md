@@ -51,18 +51,18 @@ These hold everywhere, so one learned is one learned for good.
 <a id="contents"></a>
 ## Contents
 
-[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Lights](#lights) · [Particles](#particles) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
+[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Lights](#lights) · [Particles](#particles) · [Trails](#trails) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
 
 <a id="index"></a>
 ## Index
 
 Every call, setting and entry, A to Z by its name.
 
-**A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes)
+**A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes) · [`scene.addTrail()`](#scene-addtrail)
 
 **B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst)
 
-**C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`engine.createSurfaceHook()`](#engine-createsurfacehook) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget)
+**C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`engine.createSurfaceHook()`](#engine-createsurfacehook) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget) · [`scene.clearTrail()`](#scene-cleartrail)
 
 **D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox)
 
@@ -92,9 +92,9 @@ Every call, setting and entry, A to Z by its name.
 
 **R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run)
 
-**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera)
+**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail)
 
-**T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof)
+**T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof) · [`scene.trailOf()`](#scene-trailof)
 
 **U** &nbsp; [`engine.unload()`](#engine-unload) · [`scene.update()`](#scene-update) · [`camera.update()`](#camera2d-update) · [`camera.update()`](#camera-update) · [`orbit.update()`](#orbitcontroller-update) · [`overlay.update()`](#statsoverlay-update)
 
@@ -637,6 +637,7 @@ Counts from the last frame drawn. Read only. The first five fields start at 0; t
 | `sprites2DWritten` | 2D | Of those, how many were re-uploaded. |
 | `tiles2DWritten` | 2D | Tile-map tiles re-uploaded. |
 | `emitters` | 2D | Particle emitters drawn in the 2D view. |
+| `trails` | 3D | Trails drawn. |
 | `hudSprites` | HUD | Sprites and glyphs in the HUD. |
 | `hudSpritesWritten` | HUD | Of those, how many were re-uploaded. |
 | `splats` | 3D | Splats in the clouds drawn, before culling. |
@@ -1890,6 +1891,62 @@ scene.burst(puff, 50);
 ### `scene.particlesActive` → `boolean`
 
 Whether a particle may still be alive, or one is about to be born.
+
+<a id="trails"></a>
+## Trails
+
+A ribbon behind a moving node: a sword's swing, a shell's streak, a plane's contrail, a car's light trail. The node is sampled each frame once the scene's transforms are composed, and each point lasts `lifetime` seconds of [`scene.time`](#scene-time), so [`engine.run`](#engine-run) (or [`scene.advance`](#scene-advance)) ages them. Drawn as a strip facing the camera, smoothed through the points so a fast swing at 60 frames a second curves rather than breaking into straight cuts. 3D only.
+
+<a id="scene-addtrail"></a>
+### `scene.addTrail(options)` → `Node`
+
+Adds a trail as a node, and returns it: parent it to what leaves the trail (a bone, a muzzle, a wing tip), or move it yourself.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `width` | required | Width at the head, in world units. |
+| `widthEnd` | `width` | Width at the tail, where a point is `lifetime` old. |
+| `lifetime` | required | Seconds a point of the trail lasts: how long the trail is, in time. Above 0. |
+| `color` | `[1, 1, 1, 1]` | At the head. Linear, and may exceed 1 to glow. |
+| `colorEnd` | `color` | At the tail. An alpha of 0 fades it out. |
+| `texture` | `null` | From [`engine.loadTexture`](#engine-loadtexture): u runs head (0) to tail (1), v across. Without one, soft at the edges. |
+| `blend` | `'additive'` | `'additive'` or `'alpha'`; alpha trails are drawn far to near by their heads. |
+| `emitting` | `true` | `false` stops adding points: what is there fades as it ages. |
+| `position` | `[0, 0, 0]` | In the parent's space. |
+| `parent` | `null` | Node to attach it to. |
+
+Returns: the trail's Node.
+
+Throws (all start `addTrail:`): `width` missing, or `width` or `widthEnd` negative or not a number; `lifetime` not a positive number; `color` or `colorEnd` not 4 numbers, 0 or more; `texture` not from `engine.loadTexture`; `blend` not `'additive'` or `'alpha'`.
+
+```js
+// A blade's swing: wide and hot at the edge, gone in a third of a second.
+const edge = scene.addTrail({
+  parent: sword.find('Tip'), width: 0.4, widthEnd: 0, lifetime: 0.3,
+  color: [3, 1.5, 0.5, 1], colorEnd: [1, 0.2, 0.05, 0],
+});
+```
+
+Notes: a trail keeps its last 256 points, one a frame while its node moves and none while it stands still, so a stopped trail shrinks to nothing. A hidden one keeps none and draws nothing, so it does not streak from where it was hidden to where it is shown. Each trail is one draw call, its strip built on the CPU each frame: about 40 bytes for each of 8 vertices a frame of its length.
+
+<a id="scene-settrail"></a>
+### `scene.setTrail(node, changes)`
+
+Changes a trail's options: the same names `addTrail` takes, less `position` and `parent`. What it has drawn stays and takes the new look.
+
+Throws: `'setTrail: this node has no trail'`, and what `addTrail` throws for a bad value, starting `setTrail:`.
+
+<a id="scene-cleartrail"></a>
+### `scene.clearTrail(node)`
+
+Drops everything a trail has drawn, at once: for a node moved somewhere new, such as a pooled shell fired again or a respawned player, which would otherwise streak from where it was.
+
+Throws: `'clearTrail: this node has no trail'`.
+
+<a id="scene-trailof"></a>
+### `scene.trailOf(node)` → `object | null`
+
+The node's trail options, or `null` if it has none. A copy: change them with [`setTrail`](#scene-settrail).
 
 <a id="splats"></a>
 ## Gaussian splats

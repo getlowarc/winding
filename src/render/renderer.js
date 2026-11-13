@@ -41,6 +41,7 @@ import { packFog } from './fog.js';
 import { DebugLines } from './debug.js';
 import { SpritePass } from './sprites.js';
 import { ParticleSystem } from './particles.js';
+import { TrailPass } from './trails.js';
 import { DecalSet } from './decals.js';
 import { DepthOfField } from './dof.js';
 import { ProbeSet, FACE_CAMERAS, flipInto, PROBE_FLOATS } from './probes.js';
@@ -521,7 +522,7 @@ export class Renderer {
     [
       this.gpu, this.merged, this.clusters, this.shader, this.extendedShader, this.shadows, this.skyboxPass,
       this.post, this.upscaler, this.debug, this.sprites, this.particles, this.splats, this.dofPass,
-      this.view2d, this.overlay2d, this.hzb,
+      this.view2d, this.overlay2d, this.hzb, this.trails,
     ] = await Promise.all([
       GpuDriven.create(this.rhi, this.maxDraws, this.materials),
       // One draw per material for the one-object batches: see merged.js.
@@ -546,6 +547,7 @@ export class Renderer {
       // scene's at a time. A second system for the overlay, if a HUD needs sparks.
       View2D.create(this.rhi, this.pipelines),
       HierarchicalDepth.create(this.rhi, this.pipelines),
+      TrailPass.create(this.rhi, this.pipelines, this.frameBuffer, HDR_FORMAT),
       mips,
     ]);
     this.gpu.merged = this.merged;
@@ -1648,13 +1650,15 @@ export class Renderer {
     const sprites = this.sprites.prepare(scene, camera, environment, scaled ? rhi.width : width, scaled ? rhi.height : height, anyMoved);
     // Particles likewise; and during a probe capture they are seen, not moved.
     const emitters = this.particles.prepare(scene, camera, environment, target !== null);
+    const trails = this.trails.prepare(scene, camera, environment, target !== null);
+    this.stats.trails = trails;
     const cull = this.splatCull;
     if (!(cull >= 0 && Number.isFinite(cull))) throw new Error(`splatCull must be 0 or more, got ${cull}`);
     this.splats.cull = cull;
     this.splats.unjittered = jittered ? this._taaSaved.projection : null;
     const clouds = this.splats.prepare(scene, camera, environment, width, height);
     this.stats.splats = this.splats.count;
-    this._blendInLate = !this._frameOIT && ambient === null && !transmissive && sprites === 0 && emitters === 0 && clouds === 0;
+    this._blendInLate = !this._frameOIT && ambient === null && !transmissive && sprites === 0 && emitters === 0 && trails === 0 && clouds === 0;
 
     // LATE. Whatever the fresh pyramid says is visible and was not drawn above,
     // then the blended geometry, which has to follow every opaque draw. No
@@ -1681,6 +1685,7 @@ export class Renderer {
     // glass shows what is behind it, and before blended geometry.
     this.sprites.addPass(graph, { sceneColor, depth });
     this.particles.addPasses(graph, { sceneColor, depth });
+    this.trails.addPass(graph, { sceneColor, depth });
 
     // Transmission: the opaque scene copied down a mip chain, then the
     // transmissive surfaces, which read it.
@@ -2029,6 +2034,7 @@ export class Renderer {
     this.debug.destroy();
     this.sprites.destroy();
     this.particles.destroy();
+    this.trails.destroy();
     this.splats.destroy();
     this.decals.destroy();
     this.dofPass.destroy();
