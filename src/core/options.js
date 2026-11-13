@@ -34,6 +34,7 @@ export const OPTIONS = {
   grading: ['whiteBalance', 'contrast', 'saturation', 'lut'],
   autoExposure: ['min', 'max', 'brighten', 'darken'],
   dynamicResolution: ['target', 'min', 'max'],
+  motionBlur: ['strength', 'samples', 'camera', 'maxPixels'],
   setOutline: ['width', 'through'],
   addIK: ['type', 'end', 'target', 'pole', 'weight', 'node', 'axis', 'limit'],
   setIK: ['type', 'end', 'target', 'pole', 'weight', 'node', 'axis', 'limit'],

@@ -11,6 +11,7 @@ import { autoExposureSettings, AUTO_EXPOSURE_DEFAULTS } from '../src/render/expo
 import { textRecord } from '../src/scene/scene.js';
 import { trailRecord } from '../src/scene/scene.js';
 import { nextResolution, dynamicResolutionSettings } from '../src/render/upscale.js';
+import { motionBlurSettings } from '../src/render/motionblur.js';
 import { sampleTrail, buildStrip, TRAIL_SAMPLES } from '../src/render/trails.js';
 import { probeRecord } from '../src/scene/scene.js';
 import { parseHDR, halfBits, toHalfRGBA } from '../src/render/hdr.js';
@@ -2100,6 +2101,17 @@ test('dynamic resolution steps down by the overshoot, up a step only with room, 
   assert.throws(() => dynamicResolutionSettings({ target: 0 }), /^Error: dynamicResolution: target must be a positive number/);
   assert.throws(() => dynamicResolutionSettings({ min: 0.9, max: 0.8 }), /^Error: dynamicResolution: min and max must be from 0.5 to 1/);
   assert.throws(() => dynamicResolutionSettings('on'), /^Error: dynamicResolution: true, \{ target, min, max \}, or null/);
+});
+
+test('motion blur settings: defaults, partial objects, off, and what is refused', () => {
+  assert.deepEqual({ ...motionBlurSettings(true) }, { strength: 0.5, samples: 12, camera: true, maxPixels: 48 });
+  assert.deepEqual({ ...motionBlurSettings({ camera: false }) }, { strength: 0.5, samples: 12, camera: false, maxPixels: 48 });
+  assert.equal(motionBlurSettings(null), null);
+  assert.equal(motionBlurSettings(false), null);
+  assert.throws(() => motionBlurSettings({ strength: 0 }), /^Error: motionBlur: strength must be above 0 and at most 2/);
+  assert.throws(() => motionBlurSettings({ samples: 1.5 }), /^Error: motionBlur: samples must be a whole number from 2 to 32/);
+  assert.throws(() => motionBlurSettings({ maxPixels: -1 }), /^Error: motionBlur: maxPixels must be a positive number/);
+  assert.throws(() => motionBlurSettings(2), /^Error: motionBlur: true, \{ strength, samples, camera, maxPixels \}/);
 });
 
 console.log(`\n${passed} checks passed\n`);

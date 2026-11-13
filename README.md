@@ -377,6 +377,9 @@ toon colours, a texture scrolled by the scene's time. Each node hands it two num
 ([`setHookParams`](docs/API.md#node-sethookparams)), so one hook dissolves a hundred units, each at
 its own point, still in one draw.
 
+**Motion blur** ([`renderer.motionBlur`](docs/API.md#renderer-motionblur)) from each surface's own
+motion, so a car passing a still camera blurs and the road under it does not.
+
 **Trails** ([`scene.addTrail`](docs/API.md#scene-addtrail)): a ribbon behind a moving node -- a sword's
 swing, a shell's streak, a contrail -- smoothed so a fast swing curves, tapering and fading as it ages.
 

@@ -298,6 +298,8 @@ export interface Renderer {
   resolution: number;
   /** Resolution set to hold a GPU frame time; see docs/API.md. */
   dynamicResolution: { target?: number; min?: number; max?: number } | boolean | null;
+  /** Each frame smeared along how far each pixel moved; see docs/API.md. */
+  motionBlur: { strength?: number; samples?: number; camera?: boolean; maxPixels?: number } | boolean | null;
   fog: Fog | null;
   dof: DepthOfField | null;
   ao: { radius: number | null } | null;

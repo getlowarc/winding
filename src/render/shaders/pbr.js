@@ -48,9 +48,16 @@ struct Frame {
   // material textures' mip bias: sharper under TAA, whose blend softens them;
   // w = the scene's time, in seconds, for surface hooks.
   probeInfo      : vec4<f32>,               // 256
+  // Motion (motion blur): this frame's view-projection without TAA's jitter,
+  // and last frame's; x = whether last frame's draw data is in previous[], y =
+  // where its joint palette starts there, in vec4s, z = 1 to count the
+  // camera's own motion, 0 for objects alone.
+  unjittered     : mat4x4<f32>,             // 272
+  previous       : mat4x4<f32>,             // 336
+  motion         : vec4<f32>,               // 400
   // Written once, not per frame: the sheen albedo table (render/sheen.js),
   // four entries a vec4 because a uniform array's stride is 16.
-  sheenAlbedo    : array<vec4<f32>, ${SHEEN_ALBEDO.length / 4}>,   // 272
+  sheenAlbedo    : array<vec4<f32>, ${SHEEN_ALBEDO.length / 4}>,   // 416
 };
 `;
 
@@ -63,7 +70,7 @@ const KIND = Object.fromEntries(EXTENSION_TEXTURES.map(({ slot }, k) => [slot, `
  * SurfaceHook, engine.createSurfaceHook), its WGSL is compiled in and called
  * on every surface once its material is sampled, before anything is lit.
  */
-export const pbrShader = (extensionSlots, hook = null) => /* wgsl */ `
+export const pbrShader = (extensionSlots, hook = null, velocity = false) => /* wgsl */ `
 ${BRDF_WGSL}
 ${FOG_WGSL}
 ${hook ? `${HOOKED_SURFACE_WGSL}\n${hook.source}` : ''}
@@ -220,6 +227,8 @@ struct CascadeView {
 @group(0) @binding(24) var<storage, read> geometry : array<f32>;
 // Every vertex's position alone, at the same numbering (geometry.js): what a depth prepass reads.
 @group(0) @binding(25) var<storage, read> geometryPositions : array<f32>;
+// Last frame's draw data and joint palette, copied at the end of it (motion blur).
+@group(0) @binding(26) var<storage, read> previous : array<vec4<f32>>;
 // The opaque scene, mipped, for transmissive surfaces (render/transmission.js).
 @group(0) @binding(18) var         behindMap : texture_2d<f32>;
 // Reflection probes' prefiltered cubes, and their boxes, smallest first.
@@ -255,6 +264,7 @@ struct VertexOut {
   // The node's glow, added to its emission. Its tint rides in color.
   @location(8) @interpolate(flat) glow : vec3<f32>,
   ${hook ? '@location(9) @interpolate(flat) hookParams : vec2<f32>,' : ''}
+  ${velocity ? '@location(10) currentClip : vec4<f32>,\n  @location(11) previousClip : vec4<f32>,' : ''}
 };
 
 /** A draw's tint (node.setTint), from its words: 1 where none was set. */
@@ -352,8 +362,8 @@ fn vs(
   // The blended draws use this same shader and do the opposite: they are DIRECT
   // draws, which may set firstInstance freely, so they pass the absolute slot
   // there and bind a firstVisible of 0. Both end up indexing the same list.
-  let draw = drawData[visibleItems[batch.firstVisible + instance]];
-  return shadeVertex(draw, vertex, position, normal, uv, tangent, uv1, color);
+  let item = visibleItems[batch.firstVisible + instance];
+  return shadeVertex(item, drawData[item], vertex, position, normal, uv, tangent, uv1, color);
 }
 
 /**
@@ -371,7 +381,7 @@ fn vsMerged(@builtin(vertex_index) code : u32) -> VertexOut {
   let o = vertex * 15u;
   let g = &geometry;
   return shadeVertex(
-    drawData[visibleItems[at]], vertex,
+    visibleItems[at], drawData[visibleItems[at]], vertex,
     vec3<f32>((*g)[o], (*g)[o + 1u], (*g)[o + 2u]),
     vec3<f32>((*g)[o + 3u], (*g)[o + 4u], (*g)[o + 5u]),
     vec2<f32>((*g)[o + 6u], (*g)[o + 7u]),
@@ -404,7 +414,7 @@ fn vsMergedDepth(@builtin(vertex_index) code : u32) -> DepthOut {
 
 /** What vs and vsMerged share: one vertex of the drawn object, morphed, into the world and onto the screen. */
 fn shadeVertex(
-  draw : DrawData, vertex : u32,
+  item : u32, draw : DrawData, vertex : u32,
   position : vec3<f32>, normal : vec3<f32>, uv : vec2<f32>, tangent : vec4<f32>, uv1 : vec2<f32>, color : vec4<f32>,
 ) -> VertexOut {
   var out : VertexOut;
@@ -414,6 +424,12 @@ fn shadeVertex(
   out.world = world.xyz;
   out.clip = frame.viewProjection * world;
   out.modelScale = vec3<f32>(length(draw.model[0].xyz), length(draw.model[1].xyz), length(draw.model[2].xyz));
+  ${velocity ? `
+  // Where it was last frame: last frame's model matrix, a DrawData's six vec4s on.
+  let p = item * 6u;
+  let before = select(world, mat4x4<f32>(previous[p], previous[p + 1u], previous[p + 2u], previous[p + 3u]) * vec4<f32>(m.position, 1.0), frame.motion.x > 0.5);
+  out.currentClip = frame.unjittered * world;
+  out.previousClip = select(frame.unjittered * before, frame.previous * before, frame.motion.z > 0.5);` : ''}
 
   // Normals use the inverse-transpose; tangents do NOT. A tangent is a
   // direction along the surface, so it transforms like a position delta and
@@ -1306,6 +1322,21 @@ fn vsSkinned(
   let world = skin * vec4<f32>(m.position, 1.0);
   out.world = world.xyz;
   out.clip = frame.viewProjection * world;
+  ${velocity ? `
+  // Last frame's joints, from the palette copied beside last frame's draw data.
+  let palettes = u32(frame.motion.y) + base * 4u;
+  let jointBefore = mat4x4<f32>(
+    previous[palettes + joints.x * 4u] * weights.x + previous[palettes + joints.y * 4u] * weights.y
+      + previous[palettes + joints.z * 4u] * weights.z + previous[palettes + joints.w * 4u] * weights.w,
+    previous[palettes + joints.x * 4u + 1u] * weights.x + previous[palettes + joints.y * 4u + 1u] * weights.y
+      + previous[palettes + joints.z * 4u + 1u] * weights.z + previous[palettes + joints.w * 4u + 1u] * weights.w,
+    previous[palettes + joints.x * 4u + 2u] * weights.x + previous[palettes + joints.y * 4u + 2u] * weights.y
+      + previous[palettes + joints.z * 4u + 2u] * weights.z + previous[palettes + joints.w * 4u + 2u] * weights.w,
+    previous[palettes + joints.x * 4u + 3u] * weights.x + previous[palettes + joints.y * 4u + 3u] * weights.y
+      + previous[palettes + joints.z * 4u + 3u] * weights.z + previous[palettes + joints.w * 4u + 3u] * weights.w);
+  let before = select(world, jointBefore * vec4<f32>(m.position, 1.0), frame.motion.x > 0.5);
+  out.currentClip = frame.unjittered * world;
+  out.previousClip = select(frame.unjittered * before, frame.previous * before, frame.motion.z > 0.5);` : ''}
   out.modelScale = vec3<f32>(length(skin[0].xyz), length(skin[1].xyz), length(skin[2].xyz));
 
   // The blended matrix's upper 3x3 for normals rather than its inverse
@@ -1735,6 +1766,35 @@ fn fsAO(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> AoOut {
   let color = shade(v, frontFacing);
   return AoOut(color, vec4<f32>(ambientOut, 1.0));
 }
+${velocity ? `
+/** How far the surface moved across the screen since last frame, in UV: motion blur's velocity. */
+fn velocityOf(v : VertexOut) -> vec2<f32> {
+  let now = v.currentClip.xy / v.currentClip.w;
+  let before = v.previousClip.xy / max(v.previousClip.w, 1e-6);
+  return select(vec2<f32>(0.0), (now - before) * vec2<f32>(0.5, -0.5), v.previousClip.w > 1e-6);
+}
+
+struct VelocityOut {
+  @location(0) color    : vec4<f32>,
+  @location(1) velocity : vec4<f32>,
+};
+
+@fragment
+fn fsVelocity(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> VelocityOut {
+  return VelocityOut(shade(v, frontFacing), vec4<f32>(velocityOf(v), 0.0, 0.0));
+}
+
+struct AoVelocityOut {
+  @location(0) color    : vec4<f32>,
+  @location(1) ambient  : vec4<f32>,
+  @location(2) velocity : vec4<f32>,
+};
+
+@fragment
+fn fsAOVelocity(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> AoVelocityOut {
+  let color = shade(v, frontFacing);
+  return AoVelocityOut(color, vec4<f32>(ambientOut, 1.0), vec4<f32>(velocityOf(v), 0.0, 0.0));
+}` : ''}
 
 // Weighted-blended order-independent transparency (McGuire and Bavoil 2013).
 //
@@ -1834,4 +1894,4 @@ struct HookedSurface {
 `;
 
 /** Frame uniform size in bytes. Matches the struct above. */
-export const FRAME_BYTES = 272;
+export const FRAME_BYTES = 416;

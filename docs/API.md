@@ -80,7 +80,7 @@ Every call, setting and entry, A to Z by its name.
 
 **L** &nbsp; [`engine.gpu.loseForTest()`](#engine-gpu-losefortest) · [`engine.renderer.lightDistance`](#renderer-lightdistance) · [`engine.renderer.post.levels`](#post-levels) · [`scene.lightOf()`](#scene-lightof) · [`engine.debug.line()`](#debug-line) · [`linearToSrgb()`](#color-lineartosrgb) · [`lit`](#view2d-lighting) · [`engine.load()`](#engine-load) · [`engine.loadEnvironment()`](#engine-loadenvironment) · [`engine.loadFont()`](#engine-loadfont) · [`engine.loadLUT()`](#engine-loadlut) · [`engine.loadSplats()`](#engine-loadsplats) · [`engine.loadTexture()`](#engine-loadtexture)
 
-**M** &nbsp; [`mat4`](#math-mat4)
+**M** &nbsp; [`mat4`](#math-mat4) · [`engine.renderer.motionBlur`](#renderer-motionblur)
 
 **N** &nbsp; [`node.name`](#node-name) · [`scene.node()`](#scene-node)
 
@@ -854,6 +854,26 @@ engine.renderer.dynamicResolution = { target: 14, min: 0.6 };   // a Steam Deck 
 ```
 
 Notes: it reads the GPU's own timestamps, so it turns on [`gpuTiming`](#winding-create) while it runs and off again when set back to `null`, and does nothing on a device without `timestamp-query`. It moves at most once every 20 frames: the timestamps arrive a few frames late, and each new size makes the scaled view again. It cannot help a frame the CPU holds up; [`engine.stats`](#engine-stats) and a [Benchmark](#benchmark) tell which it is. Only frames drawn to the canvas are measured and scaled.
+
+<a id="renderer-motionblur"></a>
+### `engine.renderer.motionBlur` → `object | null`
+
+Default `null`. Smears each frame along how far each pixel moved since the last, as a camera's open shutter does: a car blurs as it passes, a plane's propeller, a sword's swing. Each opaque surface works out its own motion from last frame's draw data and joints, so an object moving past a still camera blurs and a still one beside it does not; the sky and everything still blur with the camera's own motion unless `camera` is `false`. `true` takes the defaults.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `strength` | `0.5` | How long the shutter stays open, as a share of the frame: 0.5 is film's 180 degrees, 1 smears the whole way from last frame. Above 0, at most 2. |
+| `samples` | `12` | Taps along each pixel's motion, 2 to 32. Fewer is cheaper and grainier. |
+| `camera` | `true` | Blur with the camera's own turning and moving. `false` blurs only what moves by itself, as many games do. |
+| `maxPixels` | `48` | The longest smear, in pixels. |
+
+Throws (on the next frame): `'motionBlur: true, { strength, samples, camera, maxPixels }, or null to turn it off, …'`; `'motionBlur: strength must be above 0 and at most 2, …'`; `'motionBlur: samples must be a whole number from 2 to 32, …'`; `'motionBlur: maxPixels must be a positive number, …'`.
+
+```js
+engine.renderer.motionBlur = { strength: 0.5, camera: false };   // vehicles and blades blur, the view stays crisp when it turns
+```
+
+Notes: canvas frames only. On, opaque surfaces write their motion beside their colour, and a pass after [TAA](#renderer-taa) and before depth of field and bloom averages along it: on Iris Xe at 1100x700 the pass took 0.2 ms, and writing the motion was too little to measure. Its pipelines are built the first time it is turned on, and frames are drawn without it until they are ready, as with [`ao`](#renderer-ao). Blended surfaces, particles, trails and sprites write no motion of their own; they blur with what is behind them. A morphed mesh blurs with its node and joints, not its morph targets. The frame after the scene grows past a capacity draws without object motion. How far things move a frame depends on the frame rate, so the same `strength` blurs less at 144 frames a second than at 30, as a real shutter does.
 
 <a id="renderer-fog"></a>
 ### `engine.renderer.fog` → `object | null`

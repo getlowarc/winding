@@ -1472,6 +1472,62 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report;
   });
 
+  await step('motion blur smears what moves and leaves what is still, the camera\'s own motion included or not', async () => {
+    const renderer = engine.renderer;
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const block = await engine.load(buildFeatureGLB({ baseColorFactor: [0.05, 0.05, 0.05, 1] }));
+    const scene = engine.createScene();
+    scene.add(ground).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(8, 8, 1);
+    const unit = scene.add(block).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(0.6, 0.6, 1).setPosition(0, 1, 0);
+    scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    const look = (x) => { cam.position.set([x, 6, 0.01]); cam.target.set([x, 0, 0]); };
+    // Pixels along the middle row between the block's darkness and the floor's light: a sharp edge has few.
+    const between = async () => {
+      const pixels = await engine.gpu.readPixels();
+      const { width, height } = engine.gpu;
+      const row = Math.floor(height / 2) * width * 4;
+      let n = 0;
+      for (let x = 0; x < width; x++) {
+        const l = 0.2126 * pixels[row + x * 4] + 0.7152 * pixels[row + x * 4 + 1] + 0.0722 * pixels[row + x * 4 + 2];
+        if (l > 40 && l < 160) n++;
+      }
+      return { n, pixels };
+    };
+    const twoFrames = async (from, to, camFrom = 0, camTo = 0) => {
+      unit.setPosition(from, 1, 0); look(camFrom);
+      engine.renderFrame(scene, cam);
+      unit.setPosition(to, 1, 0); look(camTo);
+      engine.renderFrame(scene, cam);
+      return between();
+    };
+    try {
+      renderer.motionBlur = null;
+      const sharpStill = await twoFrames(0, 0), sharpMoving = await twoFrames(-0.6, 0);
+      renderer.motionBlur = { strength: 1 };
+      engine.renderFrame(scene, cam);
+      await renderer._pipelinesBuilt();
+      const blurStill = await twoFrames(0, 0), blurMoving = await twoFrames(-0.6, 0);
+      const drewMotion = renderer._frameVelocity;
+      let still = 0;
+      for (let i = 0; i < blurStill.pixels.length; i++) still = Math.max(still, Math.abs(blurStill.pixels[i] - sharpStill.pixels[i]));
+      const cameraBlur = await twoFrames(0, 0, -0.6, 0);
+      renderer.motionBlur = { strength: 1, camera: false };
+      const cameraOnly = await twoFrames(0, 0, -0.6, 0);
+      renderer.motionBlur = null;
+      const cameraSharp = await twoFrames(0, 0, -0.6, 0);
+      const report = `between block and floor on the middle row: still ${sharpStill.n} -> ${blurStill.n} with blur (most change ${still}), `
+        + `moving ${sharpMoving.n} -> ${blurMoving.n}${drewMotion ? '' : ' (drawn without motion)'}; camera moving: ${cameraBlur.n} with its motion, ${cameraOnly.n} left out, ${cameraSharp.n} unblurred`;
+      if (still > 2) throw new Error(`a still frame changed: ${report}`);
+      if (!(blurMoving.n > sharpMoving.n + 15)) throw new Error(`the moving block did not smear: ${report}`);
+      if (Math.abs(cameraOnly.n - cameraSharp.n) > 3) throw new Error(`camera: false still blurred the camera's motion: ${report}`);
+      if (!(cameraBlur.n > cameraSharp.n + 15)) throw new Error(`the camera's own motion did not blur: ${report}`);
+      return report;
+    } finally {
+      renderer.motionBlur = null;
+    }
+  });
+
   await step('a trail draws where its node went, and is gone once cleared', async () => {
     // Seen from above, a bright trail swept across the middle of the view
     // over twenty frames; the middle pixel against the same view without it.

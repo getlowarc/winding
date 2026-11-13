@@ -43,6 +43,7 @@ import { SpritePass } from './sprites.js';
 import { ParticleSystem } from './particles.js';
 import { TrailPass } from './trails.js';
 import { OutlinePass } from './outlines.js';
+import { MotionBlurPass, motionBlurSettings, VELOCITY_FORMAT } from './motionblur.js';
 import { DecalSet } from './decals.js';
 import { DepthOfField } from './dof.js';
 import { ProbeSet, FACE_CAMERAS, flipInto, PROBE_FLOATS } from './probes.js';
@@ -120,12 +121,24 @@ export const FEATURE_SOFT = 16;
  * forward pass at 720p on Iris Xe, with no light for the loop to find.
  */
 export const FEATURE_NO_POINTS = 32;
+/** Opaque surfaces write their motion beside their colour, for motion blur: other modules, another target. */
+export const FEATURE_VELOCITY = 64;
+
+/** Whether a variant writes motion in a set with `features`: opaque and masked ones, as with ambient. */
+function writesVelocity(variant, features) {
+  return (features & FEATURE_VELOCITY) !== 0 && (variant & 3) !== ALPHA_BLEND && (variant & VARIANT_TRANSMISSIVE) === 0;
+}
 
 function featureConstants(features) {
   return {
     PROBES: features & FEATURE_PROBES ? 1 : 0, DECALS: features & FEATURE_DECALS ? 1 : 0, SOFT_SHADOWS: features & FEATURE_SOFT ? 1 : 0,
     POINT_LIGHTS: features & FEATURE_NO_POINTS ? 0 : 1,
   };
+}
+
+/** hookShader's key: a module for each hook, extended or not, writing motion or not. */
+function moduleKey(hook, extended, velocity) {
+  return (hook * 2 + (extended ? 1 : 0)) * 2 + (velocity ? 1 : 0);
 }
 
 /** Whether a light that casts shadows has a size, so its shadows are soft. */
@@ -278,6 +291,9 @@ export class Renderer {
       { binding: 24, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
       // And their positions alone, for the merged depth prepass: see vsMergedDepth.
       { binding: 25, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      // Last frame's draw data and joints, for motion blur: the vertex stage's
+      // eighth storage buffer, as many as WebGPU guarantees.
+      { binding: 26, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
     ];
     checkStorageStages(rhi, frameEntries);
     this.materials = adopt?.materials ?? new MaterialRegistry(rhi, {
@@ -331,7 +347,17 @@ export class Renderer {
     this._variantSets = new Map([[0, { features: 0, forward: new Map(), oit: new Map(), ready: true }]]);
     this._pipelineByVariant = this._variantSets.get(0).forward;
     this._oitPipelineByVariant = this._variantSets.get(0).oit;
-    /** Surface hooks' modules by hook * 2 + extended, and the compiles under way (hookShader). */
+    /**
+     * Motion blur: true, { strength, samples, camera, maxPixels }, or null.
+     * Its state: the buffer last frame's draw data and joints are copied into
+     * at the end of each frame drawn with it, and that frame's view-projection.
+     */
+    this.motionBlur = null;
+    this._motion = {
+      buffer: createBuffer(rhi, { label: 'previous', size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }),
+      from: [null, null], copied: false, previous: new Float32Array(16), unjittered: new Float32Array(16), inverse: new Float32Array(16),
+    };
+    /** Forward modules other than the two plain ones -- a hook's, motion's -- by hookShader's key, and the compiles under way. */
     this._hookShaders = new Map();
     this._hookShaderPromises = new Map();
     /**
@@ -540,7 +566,7 @@ export class Renderer {
       compileShader(this.rhi.device, pbrShader(0), 'pbr.wgsl'),
       compileShader(this.rhi.device, pbrShader(this.materials.extensionSlots), 'pbr-extended.wgsl'),
       ShadowMaps.create(this.rhi, this.pipelines, this.drawLayout, this.shadowOptions, this.materials.layout),
-      SkyboxPass.create(this.rhi, this.pipelines, null),
+      SkyboxPass.create(this.rhi, this.pipelines),
       PostStack.create(this.rhi, this.pipelines, this.postOptions),
       Upscaler.create(this.rhi, this.pipelines),
       // Lines for one frame, drawn over the finished picture; see debug.js.
@@ -754,13 +780,21 @@ export class Renderer {
     if (features & FEATURE_AO) {
       this._aoBuilding ??= Promise.all([
         AmbientOcclusion.create(this.rhi, this.pipelines),
-        SkyboxPass.create(this.rhi, this.pipelines, AMBIENT_FORMAT),
+        SkyboxPass.create(this.rhi, this.pipelines, [AMBIENT_FORMAT]),
       ]).then(([pass, sky]) => { this.aoPass = pass; this.skyboxPassAO = sky; });
       await this._aoBuilding;
     }
     if (features & FEATURE_OIT) {
       this._oitBuilding ??= this._initOit();
       await this._oitBuilding;
+    }
+    if (features & FEATURE_VELOCITY) {
+      this._motionBuilding ??= Promise.all([
+        MotionBlurPass.create(this.rhi, this.pipelines, HDR_FORMAT),
+        SkyboxPass.create(this.rhi, this.pipelines, [VELOCITY_FORMAT]),
+        SkyboxPass.create(this.rhi, this.pipelines, [AMBIENT_FORMAT, VELOCITY_FORMAT]),
+      ]).then(([pass, sky, skyAO]) => { this.motionBlurPass = pass; this.skyboxPassVelocity = sky; this.skyboxPassAOVelocity = skyAO; });
+      await this._motionBuilding;
     }
   }
 
@@ -835,11 +869,11 @@ export class Renderer {
     return this._mergedDescriptor(this._pipelineByVariant.get(variant | (mirrored ? VARIANT_MIRRORED : 0)), variant);
   }
 
-  /** The module and layout a variant's pipelines use; see extendedPipelineLayout, and hookShader for a hooked one. */
-  _shaderFor(variant) {
+  /** The module and layout a variant's pipelines use; see extendedPipelineLayout, and hookShader for the rest. */
+  _shaderFor(variant, velocity = false) {
     const extended = (variant & VARIANT_EXTENDED) !== 0, hook = variant >> VARIANT_HOOK_SHIFT;
     const layout = extended ? this.extendedPipelineLayout : this.pipelineLayout;
-    if (hook !== 0) return { layout, shader: this._hookShaders.get(hook * 2 + (extended ? 1 : 0)) };
+    if (hook !== 0 || velocity) return { layout, shader: this._hookShaders.get(moduleKey(hook, extended, velocity)) };
     return { layout, shader: extended ? this.extendedShader : this.shader };
   }
 
@@ -848,12 +882,13 @@ export class Renderer {
    * WGSL in, compiled the first time a variant needs it. Throws what the WGSL
    * compiler said, for engine.createSurfaceHook to pass on.
    */
-  async hookShader(index, extended) {
-    const key = index * 2 + (extended ? 1 : 0);
+  async hookShader(index, extended, velocity = false) {
+    const key = moduleKey(index, extended, velocity);
     let pending = this._hookShaderPromises.get(key);
     if (!pending) {
-      const hook = this.materials.hooks[index];
-      pending = compileShader(this.rhi.device, pbrShader(extended ? this.materials.extensionSlots : 0, hook), `pbr-hook-${index}${extended ? '-extended' : ''}.wgsl`, { scoped: true })
+      const hook = index === 0 ? null : this.materials.hooks[index];
+      const label = `pbr${index === 0 ? '' : `-hook-${index}`}${extended ? '-extended' : ''}${velocity ? '-velocity' : ''}.wgsl`;
+      pending = compileShader(this.rhi.device, pbrShader(extended ? this.materials.extensionSlots : 0, hook, velocity), label, { scoped: hook !== null })
         .then((shader) => { this._hookShaders.set(key, shader); return shader; });
       this._hookShaderPromises.set(key, pending);
       pending.catch(() => this._hookShaderPromises.delete(key));
@@ -863,10 +898,13 @@ export class Renderer {
 
   async _ensureVariantSet(wanted, features) {
     const set = this._variantSets.get(features);
-    // The hooked variants' modules, before a descriptor names them.
-    await Promise.all([...new Set(wanted.filter((v) => v >> VARIANT_HOOK_SHIFT !== 0)
-      .map((v) => (v >> VARIANT_HOOK_SHIFT) * 2 + ((v & VARIANT_EXTENDED) !== 0 ? 1 : 0)))]
-      .map((key) => this.hookShader(key >> 1, (key & 1) === 1)));
+    // The hooked and motion variants' modules, before a descriptor names them.
+    const modules = new Map();
+    for (const v of wanted) {
+      const hook = v >> VARIANT_HOOK_SHIFT, extended = (v & VARIANT_EXTENDED) !== 0, velocity = writesVelocity(v, features);
+      if (hook !== 0 || velocity) modules.set(moduleKey(hook, extended, velocity), [hook, extended, velocity]);
+    }
+    await Promise.all([...modules.values()].map(([hook, extended, velocity]) => this.hookShader(hook, extended, velocity)));
     const pending = [];
     for (const variant of wanted) {
       // Every wanted variant goes to warm(), built or not: one another load
@@ -880,15 +918,19 @@ export class Renderer {
       // ambient term, for the occlusion pass to take its share back out.
       // Blended ones draw after it, in a pass with the one target.
       const ambient = (features & FEATURE_AO) !== 0 && (variant & 3) !== ALPHA_BLEND && (variant & VARIANT_TRANSMISSIVE) === 0;
+      // With motion blur, the same surfaces write their motion too, last.
+      const velocity = writesVelocity(variant, features);
       const descriptor = {
         label: `pbr:v${variant}:f${features}`,
-        ...this._shaderFor(variant),
+        ...this._shaderFor(variant, velocity),
         vertexEntry: skinned ? 'vsSkinned' : 'vs',
-        fragmentEntry: ambient ? 'fsAO' : undefined,
+        fragmentEntry: ambient ? (velocity ? 'fsAOVelocity' : 'fsAO') : velocity ? 'fsVelocity' : undefined,
         buffers: skinned ? [VERTEX_LAYOUT, SKIN_BUFFER_LAYOUT] : [VERTEX_LAYOUT],
-        targets: ambient
-          ? [{ format: HDR_FORMAT, blend: state.blend }, { format: AMBIENT_FORMAT }]
-          : [{ format: HDR_FORMAT, blend: state.blend }],
+        targets: [
+          { format: HDR_FORMAT, blend: state.blend },
+          ...(ambient ? [{ format: AMBIENT_FORMAT }] : []),
+          ...(velocity ? [{ format: VELOCITY_FORMAT }] : []),
+        ],
         primitive: state.primitive,
         depth: state.depth,
         constants: { ...state.constants, ...featureConstants(features) },
@@ -1079,6 +1121,7 @@ export class Renderer {
           { binding: 23, resource: this.shadows.cascadeSampler },
           { binding: 24, resource: { buffer: this.geometry.vertexBuffer } },
           { binding: 25, resource: { buffer: this.geometry.positionBuffer } },
+          { binding: 26, resource: { buffer: this._motion.buffer } },
         ],
       });
       this._frameBindGroups.set(environment, bindGroup);
@@ -1177,13 +1220,15 @@ export class Renderer {
     const decalCount = this.decals.prepare(scene);
     const features = (probes !== null && probes.count > 0 ? FEATURE_PROBES : 0) | (decalCount > 0 ? FEATURE_DECALS : 0)
       | (this.ao ? FEATURE_AO : 0) | (this.oit ? FEATURE_OIT : 0) | (this.softShadows ? softShadows(scene) : 0)
-      | (scene.lightCount === 0 ? FEATURE_NO_POINTS : 0);
+      | (scene.lightCount === 0 ? FEATURE_NO_POINTS : 0)
+      | (target === null && output === null && motionBlurSettings(this.motionBlur) !== null ? FEATURE_VELOCITY : 0);
     if (!this._variantSets.has(features)) this._enableFeatures(features).catch((error) => console.error(error));
     const variantSet = this._readySet(features);
     // AO and OIT this frame are what the set drawn from has built in: asked for
     // and not yet ready, the frame draws without them.
     this._frameAO = (variantSet.features & FEATURE_AO) !== 0;
     this._frameOIT = (variantSet.features & FEATURE_OIT) !== 0;
+    this._frameVelocity = (variantSet.features & FEATURE_VELOCITY) !== 0;
     this._pipelineByVariant = variantSet.forward;
     this._oitPipelineByVariant = variantSet.oit;
     if (this.decals.revision !== this._decalRevision) {
@@ -1512,6 +1557,15 @@ export class Renderer {
     this.frameData[66] = jittered ? TAA_MIP_BIAS : 0;
     // Surface hooks' clock: the scene's, so a paused game's effects pause with it.
     this.frameData[67] = scene.time ?? 0;
+    // Motion: this frame's view-projection without the jitter, last frame's,
+    // and whether last frame's draw data is there to compare with.
+    if (this._frameVelocity) this._prepareMotion(jittered ? this._taaSaved.viewProjection : camera.viewProjection);
+    const motion = this._motion;
+    this.frameData.set(motion.unjittered, 68);
+    this.frameData.set(motion.copied ? motion.previous : motion.unjittered, 84);
+    this.frameData[100] = this._frameVelocity && motion.copied ? 1 : 0;
+    this.frameData[101] = motion.paletteBase ?? 0;
+    this.frameData[102] = motionBlurSettings(this.motionBlur)?.camera === false ? 0 : 1;
     rhi.queue.writeBuffer(this.frameBuffer, 0, this.frameData);
     p?.mark('clusters + frame uniform');
 
@@ -1613,6 +1667,10 @@ export class Renderer {
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
     const black = { r: 0, g: 0, b: 0, a: 1 };
+    // And their motion, for motion blur.
+    const velocity = !this._frameVelocity ? null : graph.createTexture('velocity', {
+      width, height, format: VELOCITY_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
 
     // EARLY. Everything that was on screen last frame, which is both the
     // picture so far and the set of occluders the pyramid is built from.
@@ -1620,9 +1678,11 @@ export class Renderer {
       name: 'forward:early',
       reads: [shadowMap, localShadowMap, lightBuffer, clusterIndices, clusterCounts, indirectEarly, visibleEarly,
         ...(mergedLists === null ? [] : [mergedLists])],
-      color: ambient === null
-        ? [{ resource: sceneColor, clear: black }]
-        : [{ resource: sceneColor, clear: black }, { resource: ambient, clear: { r: 0, g: 0, b: 0, a: 0 } }],
+      color: [
+        { resource: sceneColor, clear: black },
+        ...(ambient === null ? [] : [{ resource: ambient, clear: { r: 0, g: 0, b: 0, a: 0 } }]),
+        ...(velocity === null ? [] : [{ resource: velocity, clear: { r: 0, g: 0, b: 0, a: 0 } }]),
+      ],
       depth: { resource: depth, clear: DEPTH_CLEAR_VALUE },
       execute: this._forwardEarly,
     });
@@ -1668,7 +1728,7 @@ export class Renderer {
     this.splats.unjittered = jittered ? this._taaSaved.projection : null;
     const clouds = this.splats.prepare(scene, camera, environment, width, height);
     this.stats.splats = this.splats.count;
-    this._blendInLate = !this._frameOIT && ambient === null && !transmissive && sprites === 0 && emitters === 0 && trails === 0 && clouds === 0;
+    this._blendInLate = !this._frameOIT && ambient === null && velocity === null && !transmissive && sprites === 0 && emitters === 0 && trails === 0 && clouds === 0;
 
     // LATE. Whatever the fresh pyramid says is visible and was not drawn above,
     // then the blended geometry, which has to follow every opaque draw. No
@@ -1677,7 +1737,7 @@ export class Renderer {
     if (occludable || (this._blendInLate && this.transparentList.count > 0)) graph.addPass({
       name: 'forward:late',
       reads: [shadowMap, localShadowMap, lightBuffer, clusterIndices, clusterCounts, indirectLate, visibleLate],
-      color: ambient === null ? [{ resource: sceneColor }] : [{ resource: sceneColor }, { resource: ambient }],
+      color: [{ resource: sceneColor }, ...(ambient === null ? [] : [{ resource: ambient }]), ...(velocity === null ? [] : [{ resource: velocity }])],
       depth: { resource: depth },
       execute: this._forwardLate,
     });
@@ -1779,6 +1839,13 @@ export class Renderer {
           viewProjection: this._taaSaved.viewProjection, previousViewProjection: this._taaPrevious, reset: !this._taaLast,
         });
       }
+      // Motion blur on the resolved frame, before the lens.
+      if (velocity !== null) {
+        resolved = this.motionBlurPass.addPass(graph, {
+          color: resolved, velocity, depth, width, height, settings: motionBlurSettings(this.motionBlur),
+          inverse: this._motion.inverse, previous: this._motion.copied ? this._motion.previous : this._motion.unjittered,
+        });
+      }
       const lensed = this.dof ? this.dofPass.addPasses(graph, { sceneColor: resolved, depth, camera, width, height, dof: this.dof }) : resolved;
       // Only the canvas moves the exposure: a target is shown at the canvas's.
       this.post.addPasses(graph, {
@@ -1804,6 +1871,9 @@ export class Renderer {
 
     // After the last pass is recorded and before the encoder is closed: this
     // only copies queries the GPU will have written by the time it runs.
+    // Motion blur's next frame compares with this one: its draw data and joints, copied now they are drawn.
+    if (this._frameVelocity) this._keepMotion(encoder);
+    else this._motion.copied = false;
     this.gpuTiming.resolve(encoder);
     this.post.autoExposure.resolve(encoder);
 
@@ -1982,6 +2052,36 @@ export class Renderer {
   }
 
   /**
+   * The buffer last frame's draw data and joint palette are copied into,
+   * sized to both as they are now. Made again when either grows, and then
+   * holding nothing yet: this frame draws without object motion.
+   */
+  _prepareMotion(unjittered) {
+    const m = this._motion, draw = this.gpu.drawDataBuffer, palette = this.skinPalette.buffer;
+    m.unjittered.set(unjittered);
+    mat4Invert(m.inverse, unjittered);
+    if (m.from[0] !== draw || m.from[1] !== palette) {
+      m.buffer.destroy();
+      m.buffer = createBuffer(this.rhi, {
+        label: 'previous', size: draw.size + palette.size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      m.from = [draw, palette];
+      m.copied = false;
+      m.paletteBase = draw.size / 16;
+      this._frameBindGroups = new WeakMap();
+    }
+  }
+
+  /** This frame's draw data and joints into the motion buffer, after everything that draws with them. */
+  _keepMotion(encoder) {
+    const m = this._motion, [draw, palette] = m.from;
+    encoder.copyBufferToBuffer(draw, 0, m.buffer, 0, draw.size);
+    encoder.copyBufferToBuffer(palette, 0, m.buffer, draw.size, palette.size);
+    m.previous.set(m.unjittered);
+    m.copied = true;
+  }
+
+  /**
    * The view a canvas frame is drawn into at `resolution`, made again when
    * the canvas or the resolution changes size; null at full size.
    */
@@ -2078,6 +2178,10 @@ export class Renderer {
     this.particles.destroy();
     this.trails.destroy();
     this.outlines.destroy();
+    this.motionBlurPass?.destroy();
+    this.skyboxPassVelocity?.destroy();
+    this.skyboxPassAOVelocity?.destroy();
+    this._motion.buffer.destroy();
     this.splats.destroy();
     this.decals.destroy();
     this.dofPass.destroy();
@@ -2172,6 +2276,7 @@ export class Renderer {
    */
   /** The sky this frame draws: with AO, the one that also fills the ambient target. */
   _sky() {
+    if (this._frameVelocity) return this._frameAO ? this.skyboxPassAOVelocity : this.skyboxPassVelocity;
     return this._frameAO ? this.skyboxPassAO : this.skyboxPass;
   }
 

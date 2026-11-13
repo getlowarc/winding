@@ -432,7 +432,8 @@ export class GpuDriven {
     this.drawDataBuffer = createBuffer(rhi, {
       label: 'draw-data',
       size: capacity * DRAW_DATA_BYTES,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      // COPY_SRC: motion blur copies it at the end of a frame.
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
 
     this.boundsData = sharedFloat32Array(capacity * BOUNDS_FLOATS);
@@ -648,7 +649,8 @@ export class GpuDriven {
       this.capacity, needed, storageCapacity(this.rhi, DRAW_DATA_BYTES), 'renderables',
     );
     const device = this.rhi.device;
-    const STORAGE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+    // COPY_SRC: motion blur copies the draw data at the end of a frame.
+    const STORAGE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
 
     this._allocateDrawData(capacity);
     this.boundsData = sharedFloat32Array(capacity * BOUNDS_FLOATS);
@@ -706,7 +708,8 @@ export class GpuDriven {
   _growBatches(needed) {
     const capacity = grownCapacity(this.batchCapacity, needed);
     const device = this.rhi.device;
-    const STORAGE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+    // COPY_SRC: motion blur copies the draw data at the end of a frame.
+    const STORAGE = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC;
 
     // These three are written as the batching loop discovers batches, so a
     // grow in the middle of it has to carry them over. Everything below is

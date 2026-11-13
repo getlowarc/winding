@@ -27,8 +27,9 @@ export class SkinPalette {
     this.data = new Float32Array(capacity * 16);
     this.buffer = createBuffer(rhi, {
       label: 'joint-palette',
+      // COPY_SRC: motion blur copies it at the end of a frame.
       size: capacity * JOINT_BYTES,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
     /** Start joint of each skin instance, by index into scene.skins. */
     // Shared: the workers read it into each renderable's draw data (scene/renderableJob.js).
@@ -97,8 +98,9 @@ export class SkinPalette {
     this.buffer.destroy();
     this.buffer = createBuffer(this.rhi, {
       label: 'joint-palette',
+      // COPY_SRC: motion blur copies it at the end of a frame.
       size: capacity * JOINT_BYTES,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
     });
     this.capacity = capacity;
     this.revision++;
