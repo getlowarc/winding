@@ -64,7 +64,7 @@ Every call, setting and entry, A to Z by its name.
 
 **C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`engine.createSurfaceHook()`](#engine-createsurfacehook) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget) · [`scene.clearTrail()`](#scene-cleartrail)
 
-**D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox)
+**D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox) · [`engine.renderer.dynamicResolution`](#renderer-dynamicresolution)
 
 **E** &nbsp; [`scene.emitterOf()`](#scene-emitterof) · [`engine.environment`](#engine-environment) · [`scene.environment`](#scene-environment) · [`new Environment()`](#environment) · [`engine.renderer.exposure`](#renderer-exposure)
 
@@ -834,6 +834,25 @@ engine.renderer.resolution = 0.75;
 ```
 
 Notes: only frames drawn to the canvas are scaled. A [target](#engine-createtarget) keeps the size it was made at. The HUD and the stats overlay are drawn at the canvas's full resolution, after scaling, so text stays crisp. [Debug lines](#debug-lines) are drawn into the 3D view, so they are scaled with it. Sprites sized in pixels keep their size on screen. The first time a lower resolution is set, the scaler builds in the background, and frames are stretched without sharpening until it is ready, as with [`ao`](#renderer-ao).
+
+<a id="renderer-dynamicresolution"></a>
+### `engine.renderer.dynamicResolution` → `object | null`
+
+Default `null`. Sets [`resolution`](#renderer-resolution) for you from how long the GPU takes over each frame, to keep it under `target`: down at once when a frame runs over, by about the square root of the overshoot (the cost of a frame goes mostly with its pixels); up a step of 0.05 only with a fifth of the target to spare, so it settles rather than bouncing between two. `true` takes the defaults.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `target` | `15` | Milliseconds of GPU time a frame. 15 leaves a 60 Hz display a little room; about 6 suits 144 Hz. |
+| `min` | `0.5` | The lowest resolution it goes to, 0.5 or more. |
+| `max` | `1` | The highest, at most 1. |
+
+Throws (on the next frame): `'dynamicResolution: true, { target, min, max }, or null to turn it off, …'`; `'dynamicResolution: target must be a positive number of milliseconds, …'`; `'dynamicResolution: min and max must be from 0.5 to 1, min at most max, …'`.
+
+```js
+engine.renderer.dynamicResolution = { target: 14, min: 0.6 };   // a Steam Deck holding 60
+```
+
+Notes: it reads the GPU's own timestamps, so it turns on [`gpuTiming`](#winding-create) while it runs and off again when set back to `null`, and does nothing on a device without `timestamp-query`. It moves at most once every 20 frames: the timestamps arrive a few frames late, and each new size makes the scaled view again. It cannot help a frame the CPU holds up; [`engine.stats`](#engine-stats) and a [Benchmark](#benchmark) tell which it is. Only frames drawn to the canvas are measured and scaled.
 
 <a id="renderer-fog"></a>
 ### `engine.renderer.fog` → `object | null`

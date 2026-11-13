@@ -1401,6 +1401,40 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     return report;
   });
 
+  await step('dynamic resolution drops under an impossible target and climbs back with room to spare', async () => {
+    const renderer = engine.renderer;
+    if (!renderer.gpuTiming.available) return 'no timestamp-query on this device: dynamic resolution does nothing, as documented';
+    const scene = engine.createScene();
+    scene.add(await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1] }))).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const wasTiming = renderer.gpuTiming.enabled;
+    const frames = async (n) => {
+      for (let i = 0; i < n; i++) {
+        engine.renderFrame(scene, cam);
+        await engine.gpu.device.queue.onSubmittedWorkDone();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    };
+    try {
+      renderer.dynamicResolution = { target: 0.0001 };
+      await frames(40);
+      const down = renderer.resolution;
+      renderer.dynamicResolution = { target: 1e6, max: 0.6 };
+      await frames(60);
+      const up = renderer.resolution;
+      renderer.dynamicResolution = null;
+      await frames(1);
+      const report = `impossible target: ${down}; then room to spare, max 0.6: ${up}; off again, timing ${renderer.gpuTiming.enabled ? 'on' : 'off'}`;
+      if (!(down === 0.5 && up === 0.6 && renderer.gpuTiming.enabled === wasTiming)) throw new Error(report);
+      return report;
+    } finally {
+      renderer.dynamicResolution = null;
+      renderer.resolution = 1;
+    }
+  });
+
   await step('a trail draws where its node went, and is gone once cleared', async () => {
     // Seen from above, a bright trail swept across the middle of the view
     // over twenty frames; the middle pixel against the same view without it.

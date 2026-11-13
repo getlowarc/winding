@@ -33,6 +33,7 @@ export const OPTIONS = {
   createTarget: ['size', 'pixelated', 'label'],
   grading: ['whiteBalance', 'contrast', 'saturation', 'lut'],
   autoExposure: ['min', 'max', 'brighten', 'darken'],
+  dynamicResolution: ['target', 'min', 'max'],
   fog: ['visibility', 'height', 'scaleHeight', 'albedo'],
   dof: ['focusDistance', 'fStop', 'sensorHeight'],
   Scene: ['capacity', 'renderableCapacity', 'lightCapacity'],

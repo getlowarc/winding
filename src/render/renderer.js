@@ -59,7 +59,7 @@ import { GeometryArena } from './geometry.js';
 import { MergedDraws } from './merged.js';
 import { ClusteredLights, CLUSTER_Z } from './clustered.js';
 import { PostStack, HDR_FORMAT } from './post.js';
-import { Upscaler, MIN_RESOLUTION } from './upscale.js';
+import { Upscaler, MIN_RESOLUTION, dynamicResolutionSettings, nextResolution } from './upscale.js';
 import { SplatPass, SPLAT_CULL } from './splats.js';
 import { GpuDriven, BATCH_BYTES, INDIRECT_BYTES, CULL_SHADOW, CULL_CASCADE } from './gpudriven.js';
 import {
@@ -211,6 +211,12 @@ export class Renderer {
      * render/upscale.js. A plain field, like exposure.
      */
     this.resolution = 1;
+    /**
+     * Resolution set from the GPU's frame time, to keep it under a target:
+     * true, { target, min, max }, or null. See _adaptResolution.
+     */
+    this.dynamicResolution = null;
+    this._dynamic = { frames: 0, ms: 0, timing: false };
     /** The view drawn at that resolution, made when it is first needed. */
     this._scaled = null;
 
@@ -1149,6 +1155,7 @@ export class Renderer {
     const autoExposure = autoExposureSettings(this.autoExposure);
     // A canvas frame at a lower resolution is drawn whole into a view of that
     // size, as into a target, and brought up to the canvas at the end.
+    if (target === null && output === null) this._adaptResolution();
     const scaled = target === null && output === null ? this._scaledView() : null;
     const into = output ?? scaled;
     const width = target?.width ?? into?.width ?? rhi.width;
@@ -1986,6 +1993,32 @@ export class Renderer {
       this._scaled = new RenderTarget(rhi, width, height, { label: 'scaled' });
     }
     return this._scaled;
+  }
+
+  /**
+   * dynamicResolution: the GPU's time for the frame, from its timestamps,
+   * smoothed, and every 20 canvas frames the resolution moved to fit the
+   * target (nextResolution). The timestamps arrive a few frames late, which
+   * the 20 frames between changes outlast. Nothing without timestamp-query.
+   */
+  _adaptResolution() {
+    const settings = dynamicResolutionSettings(this.dynamicResolution);
+    const d = this._dynamic, timing = this.gpuTiming;
+    if (settings === null || !timing.available) {
+      // Timing it switched on for itself, off again.
+      if (d.timing) { timing.enabled = false; d.timing = false; }
+      return;
+    }
+    if (!timing.enabled) { timing.enabled = true; d.timing = true; d.frames = 0; return; }
+    const ms = timing.totalMs;
+    if (!(ms > 0)) return;
+    d.ms = d.frames === 0 ? ms : d.ms + (ms - d.ms) * 0.1;
+    if (++d.frames < 20) return;
+    const next = nextResolution(this.resolution, d.ms, settings);
+    if (next !== this.resolution) {
+      this.resolution = next;
+      d.frames = 0;
+    }
   }
 
   _dropScaled() {

@@ -107,7 +107,7 @@ const TABLES = {
   createMesh: ['engine-createmesh', 0], 'createMesh material': ['engine-createmesh', 1], loadTexture: ['engine-loadtexture', 0],
   loadLUT: ['engine-loadlut', 0], loadEnvironment: ['engine-loadenvironment', 0], run: ['engine-run', 0],
   renderFrame: ['engine-renderframe', 0], createTarget: ['engine-createtarget', 0], grading: ['engine-grading', 0],
-  autoExposure: ['renderer-autoexposure', 0], fog: ['renderer-fog', 0], dof: ['renderer-dof', 0],
+  autoExposure: ['renderer-autoexposure', 0], dynamicResolution: ['renderer-dynamicresolution', 0], fog: ['renderer-fog', 0], dof: ['renderer-dof', 0],
   Scene: ['scene-constructor', 0], createNode: ['scene-createnode', 0], add: ['scene-add', 0], frame: ['scene-frame', 0],
   raycast: ['scene-raycast', 0], Camera: ['camera', 0], frameBounds: ['camera-framebounds', 0],
   play: ['node-play', 0], stop: ['node-stop', 0], setParent: ['node-setparent', 0], spriteSheet: ['spritesheet', 0],

@@ -285,6 +285,8 @@ export interface Renderer {
   exposure: number;
   autoExposure: AutoExposure | boolean | null;
   resolution: number;
+  /** Resolution set to hold a GPU frame time; see docs/API.md. */
+  dynamicResolution: { target?: number; min?: number; max?: number } | boolean | null;
   fog: Fog | null;
   dof: DepthOfField | null;
   ao: { radius: number | null } | null;

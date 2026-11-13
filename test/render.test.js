@@ -10,6 +10,7 @@ import { lensCoefficients } from '../src/render/dof.js';
 import { autoExposureSettings, AUTO_EXPOSURE_DEFAULTS } from '../src/render/exposure.js';
 import { textRecord } from '../src/scene/scene.js';
 import { trailRecord } from '../src/scene/scene.js';
+import { nextResolution, dynamicResolutionSettings } from '../src/render/upscale.js';
 import { sampleTrail, buildStrip, TRAIL_SAMPLES } from '../src/render/trails.js';
 import { probeRecord } from '../src/scene/scene.js';
 import { parseHDR, halfBits, toHalfRGBA } from '../src/render/hdr.js';
@@ -2077,6 +2078,28 @@ test("a trail's strip faces the eye, narrows and fades with age, and passes thro
   const m = [vertex(8), vertex(9)];
   assert.ok(Math.abs((m[0][0] + m[1][0]) / 2 - 1) < 1e-6, 'through the middle sample');
   assert.equal(buildStrip(trailRecord({ width: 1, lifetime: 1 }), 0, eye, out, 0), 0, 'nothing kept: nothing built');
+});
+
+test('dynamic resolution steps down by the overshoot, up a step only with room, and settles', () => {
+  const s = dynamicResolutionSettings(true);
+  assert.deepEqual({ ...s }, { target: 15, min: 0.5, max: 1 });
+  assert.equal(nextResolution(1, 15.1, s), 0.95, 'just over: one step down');
+  assert.equal(nextResolution(1, 30, s), 0.7, 'twice the target: by the square root, 0.707, floored to a step');
+  assert.equal(nextResolution(0.55, 100, s), 0.5, 'never under min');
+  assert.equal(nextResolution(0.8, 13, s), 0.8, 'under the target but not by a fifth: stays');
+  assert.equal(nextResolution(0.8, 11, s), 0.85, 'a fifth to spare: one step up');
+  assert.equal(nextResolution(1, 5, s), 1, 'never over max');
+  // A GPU whose frame goes with the pixels: from full size it comes to rest under the target, and stays.
+  let r = 1;
+  const cost = (res) => 2 + 28 * res * res;
+  for (let i = 0; i < 20; i++) r = nextResolution(r, cost(r), s);
+  assert.ok(cost(r) <= 15 && r === nextResolution(r, cost(r), s), `rests at ${r}, ${cost(r).toFixed(1)} ms`);
+  assert.equal(dynamicResolutionSettings(null), null);
+  assert.equal(dynamicResolutionSettings(false), null);
+  assert.equal(dynamicResolutionSettings({ target: 8 }).max, 1);
+  assert.throws(() => dynamicResolutionSettings({ target: 0 }), /^Error: dynamicResolution: target must be a positive number/);
+  assert.throws(() => dynamicResolutionSettings({ min: 0.9, max: 0.8 }), /^Error: dynamicResolution: min and max must be from 0.5 to 1/);
+  assert.throws(() => dynamicResolutionSettings('on'), /^Error: dynamicResolution: true, \{ target, min, max \}, or null/);
 });
 
 console.log(`\n${passed} checks passed\n`);

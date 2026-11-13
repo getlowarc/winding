@@ -109,7 +109,7 @@ const ktx2Worker = () => createModuleWorker(new URL('../scene/gltf/ktx2Worker.js
  * device: every live setting a frame reads (Winding._settings lists the same).
  */
 function carrySettings(from, to) {
-  for (const key of ['exposure', 'autoExposure', 'softShadows', 'taa', 'splatCull', 'resolution', 'fog', 'dof',
+  for (const key of ['exposure', 'autoExposure', 'softShadows', 'taa', 'splatCull', 'resolution', 'dynamicResolution', 'fog', 'dof',
     'skybox', 'shadowDistance', 'lightDistance', 'ao', 'oit', 'profiler']) to[key] = from[key];
   to.debug.depthTest = from.debug.depthTest;
   for (const key of ['threshold', 'knee', 'filterRadius', 'strength', 'levels', 'antialias', 'grading']) to.post[key] = from.post[key];
@@ -1126,7 +1126,7 @@ export class Winding {
   _settings() {
     const r = this.renderer, p = r.post;
     return settingsSignature([
-      r.exposure, r.autoExposure, r.softShadows, r.taa, r.splatCull, r.resolution, r.fog, r.dof, r.skybox, r.shadowDistance, r.lightDistance, r.ao, r.oit, r.debug.depthTest,
+      r.exposure, r.autoExposure, r.softShadows, r.taa, r.splatCull, r.resolution, r.dynamicResolution, r.fog, r.dof, r.skybox, r.shadowDistance, r.lightDistance, r.ao, r.oit, r.debug.depthTest,
       p.threshold, p.knee, p.filterRadius, p.strength, p.levels, p.antialias, p.grading,
       // The shadow settings a frame reads; the rest are fixed at creation.
       r.shadows.lambda, r.shadows.casterExtent, r.shadows.normalBias,

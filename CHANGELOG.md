@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hierarchy from the nearest node that set them. They ride in the draw data's last free word, so
   setting them keeps the node in its batch.
 - **`scene.time`**: the seconds `scene.advance` has moved the scene on, the clock hooks read.
+- **`engine.renderer.dynamicResolution`: the resolution set to hold a GPU frame time.** `true` or
+  `{ target, min, max }` (15 ms, 0.5 and 1 by default). From the GPU's timestamps, every 20 frames:
+  down at once by about the square root of the overshoot, up a step of 0.05 only with a fifth of the
+  target to spare, so it settles. Does nothing without `timestamp-query`.
 - **Trails: `scene.addTrail(options)`**, a ribbon behind a moving node: a sword's swing, a shell's
   streak, a contrail. Width and colour from head to tail (`widthEnd`, `colorEnd`), a texture or a
   soft edge, additive or alpha, `emitting` to stop adding to it. Sampled once a frame where its node
