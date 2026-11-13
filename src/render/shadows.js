@@ -189,7 +189,7 @@ fn vs(
 ) -> @builtin(position) vec4<f32> {
   let draw = drawData[order[batch.firstVisible + instance]];
   let moved = morphPosition(draw, vertex, position);
-  return cascade.viewProjection * draw.model * vec4<f32>(moved, 1.0);
+  return cascade.viewProjection * (draw.model * vec4<f32>(moved, 1.0));
 }
 
 /** A merged draw's vertex: its object, and where in the arena it is. See vsMerged in pbr.js. */
@@ -209,7 +209,7 @@ fn vsMerged(@builtin(vertex_index) code : u32) -> @builtin(position) vec4<f32> {
   let o = p.vertex * 3u;
   let draw = drawData[p.item];
   let moved = morphPosition(draw, p.vertex, vec3<f32>(positions[o], positions[o + 1u], positions[o + 2u]));
-  return cascade.viewProjection * draw.model * vec4<f32>(moved, 1.0);
+  return cascade.viewProjection * (draw.model * vec4<f32>(moved, 1.0));
 }
 
 struct AlphaOut {
@@ -230,7 +230,7 @@ fn vsAlpha(
 ) -> AlphaOut {
   let draw = drawData[order[batch.firstVisible + instance]];
   var out : AlphaOut;
-  out.clip = cascade.viewProjection * draw.model * vec4<f32>(morphPosition(draw, vertex, position), 1.0);
+  out.clip = cascade.viewProjection * (draw.model * vec4<f32>(morphPosition(draw, vertex, position), 1.0));
   out.uv = uv;
   out.uv1 = uv1;
   out.alpha = color.a;
@@ -255,7 +255,7 @@ fn vsSkinnedAlpha(
            + palette[base + joints.z] * weights.z
            + palette[base + joints.w] * weights.w;
   var out : AlphaOut;
-  out.clip = cascade.viewProjection * skin * vec4<f32>(morphPosition(draw, vertex, position), 1.0);
+  out.clip = cascade.viewProjection * (skin * vec4<f32>(morphPosition(draw, vertex, position), 1.0));
   out.uv = uv;
   out.uv1 = uv1;
   out.alpha = color.a;
@@ -268,7 +268,7 @@ fn vsMergedAlpha(@builtin(vertex_index) code : u32) -> AlphaOut {
   let o = p.vertex * 15u;
   let draw = drawData[p.item];
   var out : AlphaOut;
-  out.clip = cascade.viewProjection * draw.model * vec4<f32>(morphPosition(draw, p.vertex, vec3<f32>(arena[o], arena[o + 1u], arena[o + 2u])), 1.0);
+  out.clip = cascade.viewProjection * (draw.model * vec4<f32>(morphPosition(draw, p.vertex, vec3<f32>(arena[o], arena[o + 1u], arena[o + 2u])), 1.0));
   out.uv = vec2<f32>(arena[o + 6u], arena[o + 7u]);
   out.uv1 = vec2<f32>(arena[o + 12u], arena[o + 13u]);
   out.alpha = unpack4x8unorm(bitcast<u32>(arena[o + 14u])).a;
@@ -319,7 +319,7 @@ fn vsSkinned(
 
   // No draw.model, for the same reason the forward path omits it: the joints
   // place a skinned mesh entirely.
-  return cascade.viewProjection * skin * vec4<f32>(morphPosition(draw, vertex, position), 1.0);
+  return cascade.viewProjection * (skin * vec4<f32>(morphPosition(draw, vertex, position), 1.0));
 }
 `;
 
