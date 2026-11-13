@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A still morphed mesh, or a still character both skinned and morphed, no longer costs a moving
+  one's frame.** Any morph weight not exact in single precision (0.3, say), or a face on a skinned
+  character, made its renderable count as moved every frame: the scene's bounds, its draw data
+  upload and the shadow casters' boxes were all redone for it. Now nothing is, until it moves.
+
 ## [1.10.0] - 2026-11-12
 
 **Compressed textures, with no dependency.** KTX2 images (`KHR_texture_basisu`), in both of Basis
