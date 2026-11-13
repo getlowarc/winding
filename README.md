@@ -137,7 +137,7 @@ import are the files in this repository.
 
 ```html
 <script type="module">
-  import { Winding, Camera } from 'https://cdn.jsdelivr.net/npm/winding-engine@1.10.0/src/winding.js';
+  import { Winding, Camera } from 'https://cdn.jsdelivr.net/npm/winding-engine@1.11.0/src/winding.js';
 </script>
 ```
 
@@ -162,8 +162,8 @@ completion and hover help.
 <script type="importmap">
 {
   "imports": {
-    "winding-engine": "https://cdn.jsdelivr.net/npm/winding-engine@1.10.0/src/winding.js",
-    "winding-engine/": "https://cdn.jsdelivr.net/npm/winding-engine@1.10.0/src/"
+    "winding-engine": "https://cdn.jsdelivr.net/npm/winding-engine@1.11.0/src/winding.js",
+    "winding-engine/": "https://cdn.jsdelivr.net/npm/winding-engine@1.11.0/src/"
   }
 }
 </script>
@@ -350,7 +350,9 @@ anything is allocated.
 
 **Animation.** All three glTF interpolations, with rotations slerped. Playback is per instance, with
 cross-fades, layers masked to part of a skeleton, additive layers, weight blending with synced clip
-clocks so feet don't slide, and root motion. See [`node.play`](docs/API.md#node-play).
+clocks so feet don't slide, and root motion. See [`node.play`](docs/API.md#node-play). Over the
+animation, [inverse kinematics](docs/API.md#scene-addik): a two-bone limb reaching for a point (feet on
+uneven ground, a hand on a door) and a bone turned to look at one (a head, a turret).
 
 **Skinning and morph targets**, in one vertex shader, morph first as the spec orders them. Weights
 are per instance, and bounds follow both, so a character isn't culled with its arm on screen.
@@ -364,9 +366,28 @@ hand bone are found by it ([`node.find`](docs/API.md#node-find)). It can be plac
 whatever its parents ([`setWorldPosition`](docs/API.md#node-setworldposition)) -- a ragdoll's bones
 straight from a physics engine -- and moved to another parent where it stands. It can be hidden
 ([`setVisible`](docs/API.md#node-setvisible)) and tinted or lit up
-([`setTint`](docs/API.md#node-settint), [`setGlow`](docs/API.md#node-setglow)) without leaving its
+([`setTint`](docs/API.md#node-settint), [`setGlow`](docs/API.md#node-setglow)) or outlined ([`setOutline`](docs/API.md#node-setoutline)) without leaving its
 batch, so a pool of bullets or an army in two colours costs what one plain copy does. The clock
 slows or stops the world for a hit-stop or a pause ([`timeScale`](docs/API.md#engine-clock)).
+
+**Your own surface code.** A [surface hook](docs/API.md#engine-createsurfacehook) is a WGSL function
+a model's materials run once they are sampled and before they are lit: it can change their colour,
+emission, normal, roughness and metal, or cut the pixel away -- a dissolve, a shield's rim, flat
+toon colours, a texture scrolled by the scene's time. Each node hands it two numbers of its own
+([`setHookParams`](docs/API.md#node-sethookparams)), so one hook dissolves a hundred units, each at
+its own point, still in one draw.
+
+**Snapshots** ([`scene.snapshot`](docs/API.md#scene-snapshot)): every node's state as JSON and back, for
+checkpoints, replays and rewind.
+
+**Input** ([`engine.input`](docs/API.md#engine-input)): keyboard, mouse and gamepads by name, actions
+over several of them, and each press seen by one fixed step.
+
+**Motion blur** ([`renderer.motionBlur`](docs/API.md#renderer-motionblur)) from each surface's own
+motion, so a car passing a still camera blurs and the road under it does not.
+
+**Trails** ([`scene.addTrail`](docs/API.md#scene-addtrail)): a ribbon behind a moving node -- a sword's
+swing, a shell's streak, a contrail -- smoothed so a fast swing curves, tapering and fading as it ages.
 
 **Sprites, text, particles, decals and reflection probes**, each a node:
 [sprites](docs/API.md#scene-addsprite) that face the camera or stand upright;

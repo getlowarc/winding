@@ -574,7 +574,7 @@ test('lights and renderables stop at the binding limit where they grow', () => {
   });
   assert.throws(() => lights._grow(17), RangeError, '17 lights of 64 bytes');
   const gpu = Object.assign(Object.create(GpuDriven.prototype), { rhi: fakeRhi(TINY), capacity: 4 });
-  assert.throws(() => gpu._grow(9), RangeError, '9 renderables of 128 bytes');
+  assert.throws(() => gpu._grow(11), RangeError, '11 renderables of 96 bytes');
 });
 
 test('an environment or texture past the device limit in EITHER direction is refused', () => {

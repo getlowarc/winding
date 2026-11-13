@@ -740,6 +740,50 @@ export class AnimationPlayer {
     }
   }
 
+  /** What every layer is playing, as plain data: scene.snapshot. Clips by name, or index when they have none. */
+  _snapshot() {
+    return {
+      layers: this.layers.map((layer) => ({
+        name: layer.name,
+        weight: layer.weight,
+        phase: layer.phase,
+        tracks: layer.tracks.map((t) => ({
+          clip: t.clip.name ?? this.clips.indexOf(t.clip), time: t.time, loop: t.loop, speed: t.speed, finished: t.finished,
+          weight: t.weight, target: t.target, rate: t.rate, leaving: t.leaving, sync: t.sync,
+        })),
+      })),
+    };
+  }
+
+  /**
+   * Back to what _snapshot() recorded: scene.restore. A layer is found by
+   * name, or made plain if this player has none of that name -- a mask is
+   * the game's to set up, as it set it up the first time. A clip no longer
+   * playing goes back to the rest pose, as when it is stopped.
+   */
+  _restore(state) {
+    for (const layer of this.layers) {
+      const saved = state.layers?.find((l) => l.name === layer.name);
+      if (!saved) { for (const t of layer.tracks) layer.released.push(t.clip); layer.tracks = []; }
+    }
+    for (const saved of state.layers ?? []) {
+      let layer = this.layers.find((l) => l.name === saved.name);
+      if (!layer) this.layers.push(layer = newLayer(saved.name));
+      const tracks = saved.tracks.map((t) => {
+        const clip = this._clip(t.clip);
+        return clip && {
+          clip, time: t.time, loop: t.loop, speed: t.speed, finished: t.finished,
+          weight: t.weight, target: t.target, rate: t.rate, leaving: t.leaving, sync: t.sync,
+        };
+      }).filter(Boolean);
+      for (const old of layer.tracks) if (!tracks.some((t) => t.clip === old.clip)) layer.released.push(old.clip);
+      layer.tracks = tracks;
+      layer.weight = saved.weight;
+      layer.phase = saved.phase;
+    }
+    this._changed = true;
+  }
+
   _clip(nameOrIndex) {
     return typeof nameOrIndex === 'number'
       ? this.clips[nameOrIndex]

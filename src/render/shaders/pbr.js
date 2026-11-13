@@ -45,11 +45,19 @@ struct Frame {
   fogAlbedo      : vec4<f32>,               // 224
   fogLight       : vec4<f32>,               // 240  the directional lights' inscattered radiance
   // x = reflection probes to consult; y = TAA's frame, 0 without it; z = the
-  // material textures' mip bias: sharper under TAA, whose blend softens them.
+  // material textures' mip bias: sharper under TAA, whose blend softens them;
+  // w = the scene's time, in seconds, for surface hooks.
   probeInfo      : vec4<f32>,               // 256
+  // Motion (motion blur): this frame's view-projection without TAA's jitter,
+  // and last frame's; x = whether last frame's draw data is in previous[], y =
+  // where its joint palette starts there, in vec4s, z = 1 to count the
+  // camera's own motion, 0 for objects alone.
+  unjittered     : mat4x4<f32>,             // 272
+  previous       : mat4x4<f32>,             // 336
+  motion         : vec4<f32>,               // 400
   // Written once, not per frame: the sheen albedo table (render/sheen.js),
   // four entries a vec4 because a uniform array's stride is 16.
-  sheenAlbedo    : array<vec4<f32>, ${SHEEN_ALBEDO.length / 4}>,   // 272
+  sheenAlbedo    : array<vec4<f32>, ${SHEEN_ALBEDO.length / 4}>,   // 416
 };
 `;
 
@@ -58,11 +66,14 @@ const KIND = Object.fromEntries(EXTENSION_TEXTURES.map(({ slot }, k) => [slot, `
 
 /**
  * The forward shader, for a device that binds `extensionSlots` extension
- * textures a material (see extensionSlotCount in material.js).
+ * textures a material (see extensionSlotCount in material.js). With `hook` (a
+ * SurfaceHook, engine.createSurfaceHook), its WGSL is compiled in and called
+ * on every surface once its material is sampled, before anything is lit.
  */
-export const pbrShader = (extensionSlots) => /* wgsl */ `
+export const pbrShader = (extensionSlots, hook = null, velocity = false) => /* wgsl */ `
 ${BRDF_WGSL}
 ${FOG_WGSL}
+${hook ? `${HOOKED_SURFACE_WGSL}\n${hook.source}` : ''}
 
 // Pipeline-overridable constant: set per variant, so the MASK variant gets its
 // own compiled pipeline and opaque geometry never pays for the discard.
@@ -135,39 +146,37 @@ struct LocalView {
 /**
  * Per-object data, indexed by the shader rather than bound per draw.
  *
- * In a STORAGE buffer this is 112 bytes. As a dynamic uniform it had to sit on
- * a 256-byte boundary, so 144 of every 256 bytes was padding: 69% waste,
- * measured. Storage has no such rule, and the index can come from a compute
- * shader instead of from the CPU.
+ * In a STORAGE buffer this is 96 bytes. As a dynamic uniform it had to sit on
+ * a 256-byte boundary. Storage has no such rule, and the index can come from
+ * a compute shader instead of from the CPU. No normal matrix: the vertex
+ * shader makes it from the model matrix (shadeVertex), cheaper than the 48
+ * bytes a renderable it cost to build, upload and fetch.
  */
 struct DrawData {
   model         : mat4x4<f32>,    //   0
-  // The normal matrix, a column at a time, each with a word in what would be
-  // a mat3x3's padding: the node's tint and glow (node.setTint, setGlow), as
-  // six 16-bit floats -- tint less 1, then glow, so all zero is neither.
-  // Words, not floats: two halves read as one f32 can be a denormal, which
-  // a GPU may flush to zero on the way in. The same 48 bytes as a mat3x3, which
-  // is how the shadow and merged passes still declare them.
-  normal0       : vec3<f32>,      //  64
-  tint0         : u32,            //  76
-  normal1       : vec3<f32>,      //  80
-  tint1         : u32,            //  92
-  normal2       : vec3<f32>,      //  96
-  tint2         : u32,            // 108
+  // The node's tint and glow (node.setTint, setGlow), as six 16-bit floats --
+  // tint less 1, then glow, so all zero is neither. Words, not floats: two
+  // halves read as one f32 can be a denormal, which a GPU may flush to zero
+  // on the way in.
+  tint0         : u32,            //  64
+  tint1         : u32,            //  68
+  tint2         : u32,            //  72
   // Where this instance's joint matrices begin. Zero and unread for anything
   // not skinned.
-  paletteOffset : u32,            // 112
+  paletteOffset : u32,            //  76
   // Where this PRIMITIVE's morph deltas begin, as a float index into one
   // engine-wide arena.
-  morphBase     : u32,            // 116
+  morphBase     : u32,            //  80
   // Where this INSTANCE's weights begin. Two faces sharing a mesh share
   // morphBase and differ here, which is what lets them share a draw call.
-  morphWeights  : u32,            // 120
+  morphWeights  : u32,            //  84
   // Target count in the low 16 bits, floats per target per vertex in the high
-  // 16. Packed because splitting them would push this struct to 144 bytes for
+  // 16. Packed because splitting them would push this struct to 112 bytes for
   // twelve bits; see packMorphCountStride in render/morph.js.
-  morphCount    : u32,            // 124
-};                                // 128, exactly: mat3x3 aligns the struct to 16
+  morphCount    : u32,            //  88
+  // The node's two values for a surface hook (node.setHookParams), as halves.
+  hookParams    : u32,            //  92
+};                                // 96
 
 /** The only thing still bound per draw: where this batch's slice begins. */
 struct Batch {
@@ -218,6 +227,8 @@ struct CascadeView {
 @group(0) @binding(24) var<storage, read> geometry : array<f32>;
 // Every vertex's position alone, at the same numbering (geometry.js): what a depth prepass reads.
 @group(0) @binding(25) var<storage, read> geometryPositions : array<f32>;
+// Last frame's draw data and joint palette, copied at the end of it (motion blur).
+@group(0) @binding(26) var<storage, read> previous : array<vec4<f32>>;
 // The opaque scene, mipped, for transmissive surfaces (render/transmission.js).
 @group(0) @binding(18) var         behindMap : texture_2d<f32>;
 // Reflection probes' prefiltered cubes, and their boxes, smallest first.
@@ -252,6 +263,8 @@ struct VertexOut {
   @location(7) @interpolate(flat) modelScale : vec3<f32>,
   // The node's glow, added to its emission. Its tint rides in color.
   @location(8) @interpolate(flat) glow : vec3<f32>,
+  ${hook ? '@location(9) @interpolate(flat) hookParams : vec2<f32>,' : ''}
+  ${velocity ? '@location(10) currentClip : vec4<f32>,\n  @location(11) previousClip : vec4<f32>,' : ''}
 };
 
 /** A draw's tint (node.setTint), from its words: 1 where none was set. */
@@ -349,8 +362,8 @@ fn vs(
   // The blended draws use this same shader and do the opposite: they are DIRECT
   // draws, which may set firstInstance freely, so they pass the absolute slot
   // there and bind a firstVisible of 0. Both end up indexing the same list.
-  let draw = drawData[visibleItems[batch.firstVisible + instance]];
-  return shadeVertex(draw, vertex, position, normal, uv, tangent, uv1, color);
+  let item = visibleItems[batch.firstVisible + instance];
+  return shadeVertex(item, drawData[item], vertex, position, normal, uv, tangent, uv1, color);
 }
 
 /**
@@ -368,7 +381,7 @@ fn vsMerged(@builtin(vertex_index) code : u32) -> VertexOut {
   let o = vertex * 15u;
   let g = &geometry;
   return shadeVertex(
-    drawData[visibleItems[at]], vertex,
+    visibleItems[at], drawData[visibleItems[at]], vertex,
     vec3<f32>((*g)[o], (*g)[o + 1u], (*g)[o + 2u]),
     vec3<f32>((*g)[o + 3u], (*g)[o + 4u], (*g)[o + 5u]),
     vec2<f32>((*g)[o + 6u], (*g)[o + 7u]),
@@ -401,7 +414,7 @@ fn vsMergedDepth(@builtin(vertex_index) code : u32) -> DepthOut {
 
 /** What vs and vsMerged share: one vertex of the drawn object, morphed, into the world and onto the screen. */
 fn shadeVertex(
-  draw : DrawData, vertex : u32,
+  item : u32, draw : DrawData, vertex : u32,
   position : vec3<f32>, normal : vec3<f32>, uv : vec2<f32>, tangent : vec4<f32>, uv1 : vec2<f32>, color : vec4<f32>,
 ) -> VertexOut {
   var out : VertexOut;
@@ -411,11 +424,24 @@ fn shadeVertex(
   out.world = world.xyz;
   out.clip = frame.viewProjection * world;
   out.modelScale = vec3<f32>(length(draw.model[0].xyz), length(draw.model[1].xyz), length(draw.model[2].xyz));
+  ${velocity ? `
+  // Where it was last frame: last frame's model matrix, a DrawData's six vec4s on.
+  let p = item * 6u;
+  let before = select(world, mat4x4<f32>(previous[p], previous[p + 1u], previous[p + 2u], previous[p + 3u]) * vec4<f32>(m.position, 1.0), frame.motion.x > 0.5);
+  out.currentClip = frame.unjittered * world;
+  out.previousClip = select(frame.unjittered * before, frame.previous * before, frame.motion.z > 0.5);` : ''}
 
   // Normals use the inverse-transpose; tangents do NOT. A tangent is a
   // direction along the surface, so it transforms like a position delta and
-  // the model matrix is correct for it.
-  out.normal = normalize(mat3x3<f32>(draw.normal0, draw.normal1, draw.normal2) * m.normal);
+  // the model matrix is correct for it. The cofactor matrix -- each column the
+  // cross product of the other two -- is the inverse-transpose times the
+  // determinant: normalized, only the determinant's sign is left, which a
+  // mirrored node's turns over.
+  let c0 = draw.model[0].xyz;
+  let c1 = draw.model[1].xyz;
+  let c2 = draw.model[2].xyz;
+  let cofactor = mat3x3<f32>(cross(c1, c2), cross(c2, c0), cross(c0, c1));
+  out.normal = normalize(cofactor * m.normal) * select(1.0, -1.0, dot(c0, cross(c1, c2)) < 0.0);
   out.tangent = normalize((draw.model * vec4<f32>(m.tangent, 0.0)).xyz);
 
   // tangent.w is the handedness the importer computed per vertex, which is
@@ -426,6 +452,7 @@ fn shadeVertex(
   // COLOR_0 multiplies the base colour, so the tint does it here, once a vertex.
   out.color = color * vec4<f32>(tintOf(draw), 1.0);
   out.glow = glowOf(draw);
+  ${hook ? 'out.hookParams = unpack2x16float(draw.hookParams);' : ''}
   return out;
 }
 
@@ -1295,6 +1322,21 @@ fn vsSkinned(
   let world = skin * vec4<f32>(m.position, 1.0);
   out.world = world.xyz;
   out.clip = frame.viewProjection * world;
+  ${velocity ? `
+  // Last frame's joints, from the palette copied beside last frame's draw data.
+  let palettes = u32(frame.motion.y) + base * 4u;
+  let jointBefore = mat4x4<f32>(
+    previous[palettes + joints.x * 4u] * weights.x + previous[palettes + joints.y * 4u] * weights.y
+      + previous[palettes + joints.z * 4u] * weights.z + previous[palettes + joints.w * 4u] * weights.w,
+    previous[palettes + joints.x * 4u + 1u] * weights.x + previous[palettes + joints.y * 4u + 1u] * weights.y
+      + previous[palettes + joints.z * 4u + 1u] * weights.z + previous[palettes + joints.w * 4u + 1u] * weights.w,
+    previous[palettes + joints.x * 4u + 2u] * weights.x + previous[palettes + joints.y * 4u + 2u] * weights.y
+      + previous[palettes + joints.z * 4u + 2u] * weights.z + previous[palettes + joints.w * 4u + 2u] * weights.w,
+    previous[palettes + joints.x * 4u + 3u] * weights.x + previous[palettes + joints.y * 4u + 3u] * weights.y
+      + previous[palettes + joints.z * 4u + 3u] * weights.z + previous[palettes + joints.w * 4u + 3u] * weights.w);
+  let before = select(world, jointBefore * vec4<f32>(m.position, 1.0), frame.motion.x > 0.5);
+  out.currentClip = frame.unjittered * world;
+  out.previousClip = select(frame.unjittered * before, frame.previous * before, frame.motion.z > 0.5);` : ''}
   out.modelScale = vec3<f32>(length(skin[0].xyz), length(skin[1].xyz), length(skin[2].xyz));
 
   // The blended matrix's upper 3x3 for normals rather than its inverse
@@ -1310,6 +1352,7 @@ fn vsSkinned(
   out.uv1 = uv1;
   out.color = color * vec4<f32>(tintOf(draw), 1.0);
   out.glow = glowOf(draw);
+  ${hook ? 'out.hookParams = unpack2x16float(draw.hookParams);' : ''}
   return out;
 }
 
@@ -1346,19 +1389,10 @@ fn shadeSurface(v : VertexOut, frontFacing : bool) -> vec4<f32> {
 
   // COLOR_0 multiplies base colour, per the spec. An asset without it carries
   // opaque white, so this costs those nothing and needs no variant.
-  let sampled = textureSampleBias(baseColorMap, surfSampler, uvBaseColor, frame.probeInfo.z)
+  var sampled = textureSampleBias(baseColorMap, surfSampler, uvBaseColor, frame.probeInfo.z)
     * material.baseColor * v.color;
 
-  if (USE_ALPHA_MASK) {
-    if (sampled.a < material.alphaCutoff) { discard; }
-  }
-
-  // KHR_materials_unlit: the base colour is the whole answer -- no lights, no
-  // environment, no emission. No ambient either, so occlusion leaves it be.
-  if (material.unlit > 0.5) {
-    ambientOut = vec3<f32>(0.0);
-    return vec4<f32>(min(sampled.rgb + v.glow, vec3<f32>(65504.0)), sampled.a);
-  }
+  ${hook ? '' : MASK_AND_UNLIT}
 
   // The geometric normal is flipped for a back face. A double-sided material
   // draws both windings from one set of vertices, so a back face arrives with
@@ -1391,13 +1425,39 @@ fn shadeSurface(v : VertexOut, frontFacing : bool) -> vec4<f32> {
     tangentNormal = vec3<f32>(untransformNormal(4u, tangentNormal.xy), tangentNormal.z);
     n = mapNormal(v, geometric, facing, tangentNormal);
   }
-  let roughness = clamp(mr.g * material.roughness, 0.045, 1.0);
-  let metallic  = clamp(mr.b * material.emissive.w, 0.0, 1.0);
+  var roughness = mr.g * material.roughness;
+  var metallic = mr.b * material.emissive.w;
   // The spec's blend: strength 0 disables the map entirely rather than
   // multiplying ambient by zero.
-  let occlusion = 1.0 + material.occlusionStrength * (occlusionSample - 1.0);
-
+  var occlusion = 1.0 + material.occlusionStrength * (occlusionSample - 1.0);
+  var emissive = material.emissive.rgb;
+  if ((uvSets & 256u) != 0u) { emissive = emissive * textureSampleBias(emissiveMap, surfSampler, transformUV(4u, select(v.uv, v.uv1, (uvSets & 16u) != 0u)), frame.probeInfo.z).rgb; }
   let view = normalize(frame.cameraPosition.xyz - v.world);
+  ${hook ? `
+  // The surface hook: the material as sampled, for it to change.
+  var hooked : HookedSurface;
+  hooked.baseColor = sampled;
+  hooked.emissive = emissive;
+  hooked.normal = n;
+  hooked.roughness = roughness;
+  hooked.metallic = metallic;
+  hooked.occlusion = occlusion;
+  hooked.position = v.world;
+  hooked.view = view;
+  hooked.uv = v.uv;
+  hooked.uv1 = v.uv1;
+  hooked.params = v.hookParams;
+  hooked.time = frame.probeInfo.w;
+  surface(&hooked);
+  sampled = hooked.baseColor;
+  emissive = hooked.emissive;
+  n = normalize(hooked.normal);
+  roughness = hooked.roughness;
+  metallic = hooked.metallic;
+  occlusion = hooked.occlusion;
+  ${MASK_AND_UNLIT}` : ''}
+  roughness = clamp(roughness, 0.045, 1.0);
+  metallic = clamp(metallic, 0.0, 1.0);
   let NoV = max(dot(n, view), 1e-4);
 
   // View-space depth, shared by cascade selection and the cluster lookup.
@@ -1656,8 +1716,6 @@ fn shadeSurface(v : VertexOut, frontFacing : bool) -> vec4<f32> {
   ambientOut = min(ambient, vec3<f32>(65504.0));
 
   // A coat dims what shines through it as it dims everything else beneath.
-  var emissive = material.emissive.rgb;
-  if ((uvSets & 256u) != 0u) { emissive = emissive * textureSampleBias(emissiveMap, surfSampler, transformUV(4u, select(v.uv, v.uv1, (uvSets & 16u) != 0u)), frame.probeInfo.z).rgb; }
   if (EXTENSIONS) { emissive = emissive * (1.0 - s.coat * s.coatFresnel); }
   emissive = emissive + v.glow;
 
@@ -1708,6 +1766,35 @@ fn fsAO(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> AoOut {
   let color = shade(v, frontFacing);
   return AoOut(color, vec4<f32>(ambientOut, 1.0));
 }
+${velocity ? `
+/** How far the surface moved across the screen since last frame, in UV: motion blur's velocity. */
+fn velocityOf(v : VertexOut) -> vec2<f32> {
+  let now = v.currentClip.xy / v.currentClip.w;
+  let before = v.previousClip.xy / max(v.previousClip.w, 1e-6);
+  return select(vec2<f32>(0.0), (now - before) * vec2<f32>(0.5, -0.5), v.previousClip.w > 1e-6);
+}
+
+struct VelocityOut {
+  @location(0) color    : vec4<f32>,
+  @location(1) velocity : vec4<f32>,
+};
+
+@fragment
+fn fsVelocity(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> VelocityOut {
+  return VelocityOut(shade(v, frontFacing), vec4<f32>(velocityOf(v), 0.0, 0.0));
+}
+
+struct AoVelocityOut {
+  @location(0) color    : vec4<f32>,
+  @location(1) ambient  : vec4<f32>,
+  @location(2) velocity : vec4<f32>,
+};
+
+@fragment
+fn fsAOVelocity(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> AoVelocityOut {
+  let color = shade(v, frontFacing);
+  return AoVelocityOut(color, vec4<f32>(ambientOut, 1.0), vec4<f32>(velocityOf(v), 0.0, 0.0));
+}` : ''}
 
 // Weighted-blended order-independent transparency (McGuire and Bavoil 2013).
 //
@@ -1770,5 +1857,41 @@ fn fsOIT(v : VertexOut, @builtin(front_facing) frontFacing : bool) -> OitOut {
 }
 `;
 
+/**
+ * The alpha cut-out and KHR_materials_unlit, which a surface hook comes
+ * before: what it does to the alpha decides the cut, and an unlit surface
+ * is its base colour as the hook left it.
+ */
+const MASK_AND_UNLIT = /* wgsl */ `
+  if (USE_ALPHA_MASK) {
+    if (sampled.a < material.alphaCutoff) { discard; }
+  }
+
+  // KHR_materials_unlit: the base colour is the whole answer -- no lights, no
+  // environment, no emission. No ambient either, so occlusion leaves it be.
+  if (material.unlit > 0.5) {
+    ambientOut = vec3<f32>(0.0);
+    return vec4<f32>(min(sampled.rgb + v.glow, vec3<f32>(65504.0)), sampled.a);
+  }
+`;
+
+/** What a surface hook is handed and gives back: see engine.createSurfaceHook in docs/API.md. */
+export const HOOKED_SURFACE_WGSL = /* wgsl */ `
+struct HookedSurface {
+  baseColor : vec4<f32>,
+  emissive  : vec3<f32>,
+  normal    : vec3<f32>,
+  roughness : f32,
+  metallic  : f32,
+  occlusion : f32,
+  position  : vec3<f32>,
+  view      : vec3<f32>,
+  uv        : vec2<f32>,
+  uv1       : vec2<f32>,
+  params    : vec2<f32>,
+  time      : f32,
+};
+`;
+
 /** Frame uniform size in bytes. Matches the struct above. */
-export const FRAME_BYTES = 272;
+export const FRAME_BYTES = 416;

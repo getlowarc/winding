@@ -37,9 +37,46 @@ import { compileShader } from '../rhi/shader.js';
 import { createPipelineLayout } from '../rhi/bindgroups.js';
 import { createBuffer } from '../rhi/buffer.js';
 import { clampSampler } from '../rhi/texture.js';
+import { checkOptions } from '../core/options.js';
 
 /** The lowest resolution NIS is made for: past half, its filters run out of phases. */
 export const MIN_RESOLUTION = 0.5;
+
+/** How far dynamicResolution moves the resolution at a time: a scaled view is made again at each new size. */
+export const RESOLUTION_STEP = 0.05;
+/** dynamicResolution's defaults: a GPU frame of 15 ms leaves a 60 Hz display a little room. */
+export const DYNAMIC_RESOLUTION_DEFAULTS = Object.freeze({ target: 15, min: MIN_RESOLUTION, max: 1 });
+
+/** renderer.dynamicResolution, checked once a frame as autoExposure is: settings, or null for off. */
+export function dynamicResolutionSettings(value) {
+  if (value === null || value === undefined || value === false) return null;
+  if (value === true) return DYNAMIC_RESOLUTION_DEFAULTS;
+  if (typeof value !== 'object') {
+    throw new Error(`dynamicResolution: true, { target, min, max }, or null to turn it off, got ${value}`);
+  }
+  checkOptions('dynamicResolution', value);
+  const s = { ...DYNAMIC_RESOLUTION_DEFAULTS, ...value };
+  if (!(s.target > 0 && Number.isFinite(s.target))) throw new Error(`dynamicResolution: target must be a positive number of milliseconds, got ${s.target}`);
+  if (!(s.min >= MIN_RESOLUTION && s.min <= s.max && s.max <= 1)) {
+    throw new Error(`dynamicResolution: min and max must be from ${MIN_RESOLUTION} to 1, min at most max, got ${s.min} and ${s.max}`);
+  }
+  return s;
+}
+
+/**
+ * The resolution after `resolution` took `ms` of GPU time a frame, settled:
+ * down at once by the square root of the overshoot (a frame's cost goes
+ * mostly with its pixels, the square of the resolution), at least a step;
+ * up a step only with a fifth of the budget to spare, which a step's ~10% more
+ * pixels cannot use up, so it does not bounce between two.
+ */
+export function nextResolution(resolution, ms, { target, min, max }) {
+  let next = resolution;
+  if (ms > target) next = Math.floor(resolution * Math.sqrt(target / ms) / RESOLUTION_STEP + 1e-6) * RESOLUTION_STEP;
+  else if (ms < target * 0.8) next = resolution + RESOLUTION_STEP;
+  next = Math.round(Math.min(Math.max(next, min), max) * 100) / 100;
+  return next;
+}
 /** NIS's sharpness, 0 to 1: its own default. */
 const SHARPNESS = 0.5;
 const BLOCK_WIDTH = 32;

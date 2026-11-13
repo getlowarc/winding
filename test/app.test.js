@@ -4,6 +4,8 @@
 // GPU but never calls a WebGPU function, which is exactly what makes this
 // testable -- and is why the layering was worth keeping strict.
 
+import { Input } from '../src/app/input.js';
+import { outlinedRenderables } from '../src/render/outlines.js';
 import assert from 'node:assert/strict';
 
 import { Scene, DIRECTIONAL_FLOATS } from '../src/scene/scene.js';
@@ -2398,14 +2400,14 @@ await atest('Winding.supported says whether create can work, and never throws', 
   }
 });
 
-test('a tint multiplies and a glow adds down the hierarchy, in three words a renderable, zero for none', () => {
+test('a tint multiplies and a glow adds down the hierarchy, in four words a renderable, zero for none', () => {
   // Reads a renderable's words back as WGSL's unpack2x16float would, plus 1 on the tint.
   const half = (h) => {
     const e = (h >> 10) & 31, m = h & 1023, s = h & 0x8000 ? -1 : 1;
     return s * (e === 0 ? m * 2 ** -24 : (1 + m / 1024) * 2 ** (e - 15));
   };
   const read = (scene, i) => {
-    const w = scene.renderableTint.subarray(i * 3, i * 3 + 3);
+    const w = scene.renderableTint.subarray(i * 4, i * 4 + 4);
     const h = [w[0] & 0xffff, w[0] >>> 16, w[1] & 0xffff, w[1] >>> 16, w[2] & 0xffff, w[2] >>> 16].map(half);
     return { tint: [h[0] + 1, h[1] + 1, h[2] + 1], glow: [h[3], h[4], h[5]] };
   };
@@ -2416,7 +2418,7 @@ test('a tint multiplies and a glow adds down the hierarchy, in three words a ren
   const unit = scene.add(fakeAsset(), { parent: army });
   const other = scene.add(fakeAsset());
   scene.update();
-  assert.deepEqual([...scene.renderableTint.subarray(0, 6)], [0, 0, 0, 0, 0, 0], 'none: all zero');
+  assert.deepEqual([...scene.renderableTint.subarray(0, 8)], [0, 0, 0, 0, 0, 0, 0, 0], 'none: all zero');
   assert.deepEqual(scene.tintChanged, []);
 
   army.setTint([0.8, 0.1, 0.1]);
@@ -2439,14 +2441,14 @@ test('a tint multiplies and a glow adds down the hierarchy, in three words a ren
   army.setTint([1, 1, 1]);
   scene.update();
   assert.equal(scene._tints.size, 0, 'nothing kept for nodes back to none');
-  assert.deepEqual([...scene.renderableTint.subarray(0, 3)], [0, 0, 0]);
+  assert.deepEqual([...scene.renderableTint.subarray(0, 4)], [0, 0, 0, 0]);
 
   // A removal moves the last renderable down, its words with it.
   other.setTint([0, 0.5, 0]);
   scene.update();
   unit.destroy();
   near(read(scene, 0).tint, [0, 0.5, 0], 'carried down by the swap');
-  assert.deepEqual([...scene.renderableTint.subarray(3, 6)], [0, 0, 0], 'the old place cleared');
+  assert.deepEqual([...scene.renderableTint.subarray(4, 8)], [0, 0, 0, 0], 'the old place cleared');
 
   assert.throws(() => other.setTint([1, 0, 0, 0.5]), /^Error: setTint: a tint has no alpha; a see-through mesh is a blended material's$/);
   assert.throws(() => other.setTint([1, -1, 0]), /^Error: setTint: color must be 3 numbers, 0 to 65504$/);
@@ -2457,10 +2459,125 @@ test('a tint multiplies and a glow adds down the hierarchy, in three words a ren
   assert.deepEqual(other.tint, [1, 1, 1], 'removed: none');
   const reused = scene.add(fakeAsset());
   scene.update();
-  assert.deepEqual([...scene.renderableTint.subarray(0, 3)], [0, 0, 0], 'a reused slot starts with none');
+  assert.deepEqual([...scene.renderableTint.subarray(0, 4)], [0, 0, 0, 0], 'a reused slot starts with none');
   reused.setGlow([1, 0, 0]);
   scene.update();
   near(read(scene, 0).glow, [1, 0, 0], 'and takes one');
+});
+
+test('hook params come down from the nearest node that set them, in the fourth word', () => {
+  const half = (h) => {
+    const e = (h >> 10) & 31, m = h & 1023, sign = h & 0x8000 ? -1 : 1;
+    return sign * (e === 0 ? m * 2 ** -24 : (1 + m / 1024) * 2 ** (e - 15));
+  };
+  const params = (scene, i) => [scene.renderableTint[i * 4 + 3] & 0xffff, scene.renderableTint[i * 4 + 3] >>> 16].map(half);
+  const scene = new Scene({ capacity: 64 });
+  const army = scene.createNode();
+  const unit = scene.add(fakeAsset(), { parent: army });
+  scene.update();
+  assert.deepEqual(params(scene, 0), [0, 0], 'none');
+  army.setHookParams(0.25, -2);
+  scene.update();
+  assert.deepEqual(params(scene, 0), [0.25, -2], "the parent's, as it set none of its own");
+  assert.ok(scene.renderableTint.subarray(0, 3).every((w) => w === 0), 'and no tint for it');
+  unit.setHookParams(0.75);
+  scene.update();
+  assert.deepEqual(params(scene, 0), [0.75, 0], 'its own, whole: not added or mixed');
+  assert.deepEqual(unit.hookParams, [0.75, 0]);
+  unit.setHookParams(0, 0);
+  scene.update();
+  assert.deepEqual(params(scene, 0), [0.25, -2], 'back to none: the parent again');
+  army.setHookParams(0);
+  scene.update();
+  assert.equal(scene._tints.size, 0, 'nothing kept');
+  assert.deepEqual(params(scene, 0), [0, 0]);
+  assert.throws(() => unit.setHookParams(NaN), /^RangeError: setHookParams: x and y must be numbers from -65504 to 65504$/);
+});
+
+test('an outline reaches every mesh under its node, the nearest outlined node deciding, and not hidden ones', () => {
+  const scene = new Scene({ capacity: 64 });
+  const army = scene.createNode();
+  const a = scene.add(fakeAsset(), { parent: army });
+  const b = scene.add(fakeAsset(), { parent: army });
+  scene.add(fakeAsset());
+  scene.update();
+  const pairs = new Uint32Array(16), looks = new Map();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 0, 'none');
+  army.setOutline([1, 0, 0]);
+  b.setOutline([0, 1, 0], { width: 4, through: true });
+  scene.update();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 2);
+  assert.deepEqual([...pairs.subarray(0, 4)], [0, 1, 1, 2], "the army's look on its first, the second's own on it");
+  assert.deepEqual(b.outline, { color: [0, 1, 0, 1], width: 4, through: true });
+  a.setVisible(false);
+  scene.update();
+  looks.clear();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 1, 'hidden: left out');
+  b.setOutline(null);
+  a.setVisible(true);
+  scene.update();
+  looks.clear();
+  assert.equal(outlinedRenderables(scene, pairs, looks), 2);
+  assert.equal(looks.size, 1, 'one look, shared');
+  army.destroy();
+  scene.update();
+  assert.equal(scene.outlines.size, 0, 'gone with its node');
+  assert.throws(() => scene.add(fakeAsset()).setOutline([1, 0, 0], { width: 9 }), /^RangeError: setOutline: width must be from 0.5 to 8 pixels/);
+  assert.throws(() => scene.add(fakeAsset()).setOutline([1, 0]), /^Error: setOutline: color must be 3 or 4 numbers/);
+});
+
+test('input: keys held, pressed and released by name; a press seen once; focus lost lets go', () => {
+  const target = new EventTarget();
+  const send = (type, fields) => target.dispatchEvent(Object.assign(new Event(type), fields));
+  const input = new Input({ keys: target, pointer: null, pads: () => [] });
+  send('keydown', { code: 'Space' });
+  send('keydown', { code: 'Space', repeat: true });
+  assert.ok(input.down('Space') && input.pressed('Space') && !input.released('Space'));
+  input.consume();
+  assert.ok(input.down('Space') && !input.pressed('Space'), 'held, but pressed only until a step has seen it');
+  send('keyup', { code: 'Space' });
+  assert.ok(!input.down('Space') && input.released('Space'));
+  send('keydown', { code: 'KeyW' });
+  send('blur', {});
+  assert.ok(!input.down('KeyW') && input.released('KeyW'), 'focus lost: let go');
+  input.bind('jump', ['Space', 'PadA']);
+  send('keydown', { code: 'Space' });
+  assert.ok(input.down('jump') && input.pressed('jump'));
+  input.destroy();
+  send('keyup', { code: 'Space' });
+  assert.ok(input.down('Space'), 'destroyed: no longer listening');
+});
+
+test('input: gamepads by standard name, any or one, with a radial dead zone, and axis actions', () => {
+  const pads = [];
+  const pad = (index, a, x, y) => ({
+    index, id: `pad ${index}`, connected: true, mapping: 'standard',
+    buttons: Array.from({ length: 17 }, (_, b) => ({ value: b === 0 ? a : 0, pressed: b === 0 && a > 0.5 })),
+    axes: [x, y, 0, 0],
+  });
+  const target = new EventTarget();
+  const input = new Input({ keys: target, pointer: null, pads: () => pads });
+  pads[0] = pad(0, 0, 0.1, 0.1);
+  pads[1] = pad(1, 1, 0, 0);
+  input.poll();
+  assert.ok(input.pressed('PadA') && input.pressed('PadA', 1) && !input.pressed('PadA', 0), 'the second pad pressed A');
+  assert.ok(input.down('PadA') && !input.down('PadA', 0));
+  assert.equal(input.value('PadLeftX', 0), 0, 'inside the dead zone');
+  pads[0] = pad(0, 0, 1, 0);
+  input.consume();
+  input.poll();
+  assert.equal(input.value('PadLeftX', 0), 1, 'full over');
+  pads[0] = pad(0, 0, 0.575, 0);
+  input.poll();
+  assert.ok(Math.abs(input.value('PadLeftX', 0) - 0.5) < 1e-9, 'past the dead zone, from 0 again: halfway is half');
+  input.bind('moveX', { negative: ['KeyA'], positive: ['KeyD'], axis: 'PadLeftX' });
+  target.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyA' }));
+  assert.ok(Math.abs(input.value('moveX') + 0.5) < 1e-9, 'stick right a half, A held: left a half');
+  pads[1] = { ...pads[1], connected: false };
+  input.consume();
+  input.poll();
+  assert.ok(input.released('PadA', 1) && !input.down('PadA'), 'unplugged with A held: released');
+  assert.deepEqual(input.pads.map((p) => p.index), [0]);
 });
 
 console.log(`\n${passed} checks passed\n`);

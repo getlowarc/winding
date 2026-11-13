@@ -171,6 +171,23 @@ export const VARIANT_TRANSMISSIVE = 32;
  * a third of their time, for branches that never run.
  */
 export const VARIANT_EXTENDED = 64;
+/**
+ * A surface hook's number, from bit 7 up: its own shader module, so its own
+ * pipelines. 0 for none. See SurfaceHook.
+ */
+export const VARIANT_HOOK_SHIFT = 7;
+
+/**
+ * WGSL a material runs on its surface before it is lit (engine.createSurfaceHook).
+ * Numbered by the registry that made it, from 1; the number is part of every
+ * variant of a material that uses it.
+ */
+export class SurfaceHook {
+  constructor(source, index) {
+    this.source = source;
+    this.index = index;
+  }
+}
 
 /** Whether a material needs the extended shader; see VARIANT_EXTENDED. */
 export function usesExtendedShading(material, extensionTextures) {
@@ -250,14 +267,16 @@ export class MaterialRegistry {
     /** A number for each texture or sampler a key names, so a key compares them by identity. */
     this._identities = new WeakMap();
     this._identityCount = 0;
-    this.variants = new Uint8Array(capacity);
+    this.variants = new Uint16Array(capacity);
+    /** Surface hooks by number, 1 up (SurfaceHook). */
+    this.hooks = [null];
     this.alphaModes = new Uint8Array(capacity);
     this.transmissive = new Uint8Array(capacity);
 
     // Variant -> dense pipeline id, assigned in first-seen order so the id
     // stays small however sparse the variant space is.
     this._pipelineIds = new Map();
-    this.pipelineIdOf = new Uint8Array(capacity);
+    this.pipelineIdOf = new Uint16Array(capacity);
 
     this._defaults = defaultTextures(rhi);
     this._sampler = linearSampler(rhi);
@@ -326,7 +345,8 @@ export class MaterialRegistry {
     const transmissive = (material.transmission ?? 0) > 0;
     this.transmissive[id] = transmissive ? 1 : 0;
     const extended = usesExtendedShading(material, extensions.bound.length);
-    const variant = variantKey(alphaMode, material.doubleSided === true, false, false, transmissive, extended);
+    const variant = variantKey(alphaMode, material.doubleSided === true, false, false, transmissive, extended)
+      | ((material.hook?.index ?? 0) << VARIANT_HOOK_SHIFT);
     this.variants[id] = variant;
 
     let pipelineId = this._pipelineIds.get(variant);
@@ -373,7 +393,8 @@ export class MaterialRegistry {
       if (n === undefined) this._identities.set(object, (n = ++this._identityCount));
       return n;
     };
-    const json = JSON.stringify(material, (field, value) => (field === 'name' ? undefined : value));
+    // A hook by its number: as JSON every hook is the same empty object.
+    const json = JSON.stringify(material, (field, value) => (field === 'name' ? undefined : field === 'hook' ? value?.index : value));
     const bound = Object.keys(textures).sort().map((slot) => `${slot}:${textures[slot] ? identity(textures[slot]) : 0}`);
     return `${json}|${bound.join(',')}`;
   }
@@ -617,6 +638,14 @@ export class MaterialRegistry {
 
   isTransmissive(materialId) {
     return this.transmissive[materialId] === 1;
+  }
+
+  /** A surface hook, numbered for the variants of the materials that use it. */
+  addHook(source) {
+    const hook = new SurfaceHook(source, this.hooks.length);
+    if (hook.index >= 1 << (16 - VARIANT_HOOK_SHIFT)) throw new RangeError(`createSurfaceHook: ${hook.index - 1} hooks is the most there can be`);
+    this.hooks.push(hook);
+    return hook;
   }
 
   /** Every distinct variant registered so far, for warming the pipeline cache. */

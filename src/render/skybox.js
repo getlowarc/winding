@@ -70,8 +70,8 @@ fn fs(v : VertexOut) -> @location(0) vec4<f32> {
 `;
 
 export class SkyboxPass {
-  /** `ambientFormat`: the forward passes' second target, when ambient occlusion is on. */
-  static async create(rhi, pipelines, ambientFormat = null) {
+  /** `extraFormats`: the forward passes' other targets -- ambient occlusion's, motion blur's -- which the sky leaves be. */
+  static async create(rhi, pipelines, extraFormats = []) {
     const shader = await compileShader(rhi.device, SKYBOX_SHADER, 'skybox.wgsl');
 
     const layout = rhi.device.createBindGroupLayout({
@@ -93,11 +93,9 @@ export class SkyboxPass {
       label: 'skybox',
       layout: createPipelineLayout(rhi.device, { 0: layout }, 'skybox'),
       shader,
-      // The sky has no ambient term to occlude: its second target, when there
-      // is one, keeps the zero it was cleared to.
-      targets: ambientFormat === null
-        ? [{ format: HDR_FORMAT }]
-        : [{ format: HDR_FORMAT }, { format: ambientFormat, writeMask: 0 }],
+      // The sky has no ambient term to occlude, and its motion the blur works
+      // out from the camera: the other targets keep the zero they were cleared to.
+      targets: [{ format: HDR_FORMAT }, ...extraFormats.map((format) => ({ format, writeMask: 0 }))],
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       // Drawn after the opaque geometry, at depth 0 -- reverse-Z's cleared
       // far plane -- so 'equal' passes only where nothing was drawn: the sky

@@ -9,6 +9,8 @@
 // every frame to update bounds and cull. The Node objects users hold are
 // cursors over this (see node.js), not entries in it.
 
+import { snapshotScene, restoreScene } from './snapshot.js';
+import { ikRecord, solveIK, ikAlive, releaseIK } from './ik.js';
 import { assertFinite } from '../core/assert.js';
 import { HandleAllocator, handleIndex, NULL_HANDLE } from '../core/handle.js';
 import { TransformStore, NO_PARENT } from './transform.js';
@@ -46,14 +48,22 @@ function half(x) {
   return Math.min(sign | ((exp << 10) | (mantissa >> 13)) + ((mantissa >> 12) & 1), sign | 0x7bff);
 }
 
-const TINT_WORDS = new Uint32Array(3);
-const TINT_ONES = new Float32Array(6);
+const TINT_WORDS = new Uint32Array(4);
+const TINT_ONES = new Float32Array(8);
+/** Per node: tint r, g, b, glow r, g, b, and the two hook params (node.setHookParams). */
+const TINT_FLOATS = 8;
+/** Per renderable: the four words its draw data carries. */
+const TINT_STRIDE = 4;
 
-/** A tint and a glow as the three words a renderable's draw data carries: tint - 1 and glow, so all zero is neither. */
+/**
+ * A tint, a glow and the hook params as the four words a renderable's draw
+ * data carries: tint - 1, glow and the params, so all zero is none of them.
+ */
 function tintWords(out, at, t, o) {
   out[at] = half(t[o] - 1) | half(t[o + 1] - 1) << 16;
   out[at + 1] = half(t[o + 2] - 1) | half(t[o + 3]) << 16;
   out[at + 2] = half(t[o + 4]) | half(t[o + 5]) << 16;
+  out[at + 3] = half(t[o + 6]) | half(t[o + 7]) << 16;
 }
 
 /**
@@ -141,6 +151,43 @@ export function emitterRecord(options = {}) {
   };
 }
 let nextEmitterSeed = 1;
+
+/**
+ * A trail's options, checked; see Scene.addTrail. Where its node has been is
+ * kept here, as render/trails.js samples it: x, y, z and the scene's time,
+ * oldest first, `count` of them from `start`.
+ */
+export function trailRecord(options = {}, caller = 'addTrail') {
+  const { width, widthEnd = width, lifetime, color = [1, 1, 1, 1], colorEnd, texture = null, blend = 'additive', emitting = true } = options;
+  if (width === undefined) throw new Error(`${caller}: width is required: how wide the trail is at its head, in world units`);
+  if (![width, widthEnd].every((w) => typeof w === 'number' && Number.isFinite(w) && w >= 0)) {
+    throw new Error(`${caller}: width and widthEnd must be 0 or more, got ${width} and ${widthEnd}`);
+  }
+  if (!(typeof lifetime === 'number' && lifetime > 0 && Number.isFinite(lifetime))) {
+    throw new Error(`${caller}: lifetime must be a positive number of seconds: how long a point of the trail lasts, got ${lifetime}`);
+  }
+  const colour = (v, what) => {
+    if (!(v?.length === 4 && [...v].every((c) => Number.isFinite(c) && c >= 0))) throw new Error(`${caller}: ${what} must be 4 numbers, 0 or more, got ${v}`);
+    return Float32Array.from(v);
+  };
+  if (texture !== null && !(texture?.view && texture.width > 0)) throw new Error(`${caller}: texture must be one engine.loadTexture returned`);
+  if (!['additive', 'alpha'].includes(blend)) throw new Error(`${caller}: blend is 'additive' or 'alpha', got ${blend}`);
+  const start = colour(color, 'color');
+  return {
+    options: { ...options },
+    width,
+    widthEnd,
+    lifetime,
+    color: start,
+    colorEnd: colorEnd === undefined ? start : colour(colorEnd, 'colorEnd'),
+    texture,
+    blend,
+    emitting: emitting !== false,
+    samples: null,
+    start: 0,
+    count: 0,
+  };
+}
 
 /** A decal's options, checked; see Scene.addDecal. */
 export function decalRecord({ texture, size, color = [1, 1, 1, 1] } = {}) {
@@ -659,7 +706,7 @@ export class Scene {
     this._tintMoved = new Uint8Array(0);
     this._tintDirty = false;
     // Shared, as the boxes and matrix slots are: the workers write draw data from it (renderableJob.js).
-    this.renderableTint = sharedUint32Array(renderableCapacity * 3);
+    this.renderableTint = sharedUint32Array(renderableCapacity * TINT_STRIDE);
     this.tintChanged = [];
     this._hiddenSelfCount = 0;
     this._visibilityDirty = false;
@@ -785,6 +832,8 @@ export class Scene {
      * would draw exactly what the last one did, and skips it.
      */
     this.changes = 0;
+    /** Seconds stepped by advance(), from 0: the clock surface hooks read (frame.probeInfo.w). */
+    this.time = 0;
     /**
      * Bumped when the order sprites and text draw in can change -- one added
      * or removed, or a layer, texture or blend changed -- and a 2D view
@@ -814,6 +863,12 @@ export class Scene {
     this.sprites = new Map();
     /** Particle emitters (see addEmitter), by the entity each hangs off. */
     this.emitters = new Map();
+    /** Trails (see addTrail), by the entity each follows. */
+    this.trails = new Map();
+    /** Outlines (node.setOutline), by node slot: { color, width, through, key }. */
+    this.outlines = new Map();
+    /** Inverse kinematics (addIK), solved in this order at update(). */
+    this._ik = [];
     /** Gaussian splat captures (see addSplats), by the entity each hangs off. */
     this.splats = new Map();
     /** Decals (see addDecal), by the entity each hangs off, in the order added. */
@@ -1116,7 +1171,7 @@ export class Scene {
     this.renderableMorphPad = growArray(this.renderableMorphPad, capacity);
     this.renderableLodSlot = growShared(this.renderableLodSlot, capacity, sharedInt32Array);
     this.renderableHidden = growShared(this.renderableHidden, capacity, sharedUint8Array);
-    this.renderableTint = growShared(this.renderableTint, capacity, sharedUint32Array, 3);
+    this.renderableTint = growShared(this.renderableTint, capacity, sharedUint32Array, TINT_STRIDE);
     this.renderableLodSphere = growShared(this.renderableLodSphere, capacity, sharedFloat32Array, 4);
     this.renderableCoverage = growShared(this.renderableCoverage, capacity, sharedFloat32Array, 2);
     this.localMin = growShared(this.localMin, capacity, sharedFloat32Array, 3);
@@ -1217,13 +1272,97 @@ export class Scene {
       throw new Error(`${caller}: a tint has no alpha; a see-through mesh is a blended material's`);
     }
     const slot = handleIndex(node.entity);
+    this._ownTint(slot, at, color[0], color[1], color[2]);
+  }
+
+  /**
+   * A limb reaching for a point ('twoBone': a foot on uneven ground, a hand
+   * on a door) or a bone turned to look at one ('aim': a head, a turret).
+   * Solved at update() over whatever the animation posed. Returns a handle
+   * for setIK and removeIK.
+   */
+  addIK(options = {}) {
+    checkOptions('addIK', options);
+    const record = ikRecord(this, options);
+    this._ik.push(record);
+    this.changes++;
+    return record;
+  }
+
+  /** Change an IK's options: the same names addIK takes. Each frame's new target goes here. */
+  setIK(handle, changes) {
+    checkOptions('setIK', changes);
+    if (!this._ik.includes(handle)) throw new Error('setIK: not an IK of this scene: addIK makes one, removeIK ends it');
+    const next = ikRecord(this, { ...handle.options, ...changes }, 'setIK');
+    const sameBones = next.bones.every((b, k) => b.entity === handle.bones[k]?.entity);
+    if (!sameBones) releaseIK(this.transforms, handle);
+    Object.assign(handle, next, sameBones ? { input: handle.input, wrote: handle.wrote } : {});
+    this.changes++;
+  }
+
+  /**
+   * The state of every node under `root` (the whole scene without one) as
+   * plain data, JSON-ready: where each is, whether shown, its tint, glow,
+   * hook params and outline, and what its model is playing. See restore().
+   */
+  snapshot(root = null) {
+    if (root !== null && !root.alive) throw new Error('snapshot: the root node was removed');
+    return snapshotScene(this, root);
+  }
+
+  /**
+   * Put a snapshot back: each node found by where it sits under `root` and
+   * its name, as snapshot() recorded it. Returns { restored, missing }: how
+   * many were, and the paths of those not found.
+   */
+  restore(snapshot, root = null) {
+    if (root !== null && !root.alive) throw new Error('restore: the root node was removed');
+    const result = restoreScene(this, snapshot, root);
+    this.changes++;
+    return result;
+  }
+
+  /** End an IK. Its bones go back to the pose under it. */
+  removeIK(handle) {
+    const k = this._ik.indexOf(handle);
+    if (k < 0) return;
+    this._ik.splice(k, 1);
+    releaseIK(this.transforms, handle);
+    this.changes++;
+  }
+
+  /** node.setOutline: a look, or null for none. */
+  _setOutline(node, color, options) {
+    if (!node.alive) throw new Error('setOutline: this node was removed');
+    const slot = handleIndex(node.entity);
+    this.changes++;
+    if (color === null) { this.outlines.delete(slot); return; }
+    checkOptions('setOutline', options);
+    const { width = 2, through = false } = options;
+    if (!((color?.length === 3 || color?.length === 4) && [...color].every((c) => Number.isFinite(c) && c >= 0))) {
+      throw new Error(`setOutline: color must be 3 or 4 numbers, 0 or more, or null for none, got ${color}`);
+    }
+    if (!(width >= 0.5 && width <= 8)) throw new RangeError(`setOutline: width must be from 0.5 to 8 pixels, got ${width}`);
+    const rgba = Float32Array.of(color[0], color[1], color[2], color[3] ?? 1);
+    this.outlines.set(slot, { color: rgba, width, through: through === true, key: `${rgba.join(',')}|${width}|${through === true}` });
+  }
+
+  /** node.setHookParams. */
+  _setHookParams(node, x, y) {
+    if (!node.alive) throw new Error('setHookParams: this node was removed');
+    if (!(Math.abs(x) <= 65504 && Math.abs(y) <= 65504)) throw new RangeError('setHookParams: x and y must be numbers from -65504 to 65504');
+    this._ownTint(handleIndex(node.entity), 6, x, y);
+  }
+
+  /** A node's own tint, glow or hook params, from `at`, as setTint, setGlow or setHookParams gives them. */
+  _ownTint(slot, at, ...values) {
     this._tintRoom();
     let own = this._tints.get(slot);
-    if (!own) this._tints.set(slot, own = Float32Array.of(1, 1, 1, 0, 0, 0));
-    own[at] = color[0]; own[at + 1] = color[1]; own[at + 2] = color[2];
+    if (!own) this._tints.set(slot, own = Float32Array.of(1, 1, 1, 0, 0, 0, 0, 0));
+    for (let k = 0; k < values.length; k++) own[at + k] = values[k];
     this._tintHas[slot] = 1;
-    // Back to neither: forgotten, so a scene that stops tinting stops paying for it.
-    if (own[0] === 1 && own[1] === 1 && own[2] === 1 && own[3] === 0 && own[4] === 0 && own[5] === 0) {
+    // Back to none: forgotten, so a scene that stops tinting stops paying for it.
+    if (own[0] === 1 && own[1] === 1 && own[2] === 1 && own.every((v, k) => k < 3 || v === 0)) {
       this._tints.delete(slot);
       this._tintHas[slot] = 0;
     }
@@ -1234,6 +1373,7 @@ export class Scene {
   /** A node's own tint (at 0) or glow (at 3), as setTint left it. */
   _tintOf(node, at) {
     const own = node.alive ? this._tints.get(handleIndex(node.entity)) : undefined;
+    if (at === 6) return own ? [own[6], own[7]] : [0, 0];
     return own ? [own[at], own[at + 1], own[at + 2]] : (at === 0 ? [1, 1, 1] : [0, 0, 0]);
   }
 
@@ -1252,14 +1392,16 @@ export class Scene {
     this._tintRoom();
     const t = this.transforms, order = t.order, parent = t.parent;
     const at = this._tintAt, moved = this._tintMoved, has = this._tintHas;
+    const none = (b) => at[b] === 0 && at[b + 1] === 0 && at[b + 2] === 0 && at[b + 3] === 0
+      && at[b + 4] === 0 && at[b + 5] === 0 && at[b + 6] === 0 && at[b + 7] === 0;
     for (let k = 0; k < t.orderCount; k++) {
-      const e = order[k], o = e * 6, p = parent[e];
+      const e = order[k], o = e * TINT_FLOATS, p = parent[e];
       const own = has[e] === 1 ? this._tints.get(e) : null;
-      const q = p === NO_PARENT ? -1 : p * 6;
+      const q = p === NO_PARENT ? -1 : p * TINT_FLOATS;
       // Neither its own nor its parent's: none, which is most nodes, and cheap.
-      if (own === null && (q < 0 || moved[p] === 0) && (q < 0 || (at[q] === 0 && at[q + 1] === 0 && at[q + 2] === 0 && at[q + 3] === 0 && at[q + 4] === 0 && at[q + 5] === 0))) {
-        moved[e] = at[o] !== 0 || at[o + 1] !== 0 || at[o + 2] !== 0 || at[o + 3] !== 0 || at[o + 4] !== 0 || at[o + 5] !== 0 ? 1 : 0;
-        if (moved[e] === 1) at.fill(0, o, o + 6);
+      if (own === null && (q < 0 || moved[p] === 0) && (q < 0 || none(q))) {
+        moved[e] = none(o) ? 0 : 1;
+        if (moved[e] === 1) at.fill(0, o, o + TINT_FLOATS);
         continue;
       }
       let changed = 0;
@@ -1270,6 +1412,13 @@ export class Scene {
         at[o + c] = tint;
         at[o + 3 + c] = glow;
       }
+      // Hook params neither multiply nor add: a node's own, or else its parent's.
+      const mine = own !== null && (own[6] !== 0 || own[7] !== 0);
+      for (let c = 6; c < 8; c++) {
+        const param = mine ? Math.fround(own[c]) : q < 0 ? 0 : at[q + c];
+        if (param !== at[o + c]) changed = 1;
+        at[o + c] = param;
+      }
       moved[e] = changed;
     }
     // Only the renderables of nodes whose tint changed are worked out again.
@@ -1277,11 +1426,11 @@ export class Scene {
     for (let i = 0; i < this.renderableCount; i++) {
       const slot = this.renderableMatrixSlot[i];
       if (moved[slot] === 0) continue;
-      for (let c = 0; c < 6; c++) ones[c] = at[slot * 6 + c] + (c < 3 ? 1 : 0);
+      for (let c = 0; c < TINT_FLOATS; c++) ones[c] = at[slot * TINT_FLOATS + c] + (c < 3 ? 1 : 0);
       tintWords(fresh, 0, ones, 0);
-      const w = i * 3;
-      if (fresh[0] === words[w] && fresh[1] === words[w + 1] && fresh[2] === words[w + 2]) continue;
-      words[w] = fresh[0]; words[w + 1] = fresh[1]; words[w + 2] = fresh[2];
+      const w = i * TINT_STRIDE;
+      if (fresh[0] === words[w] && fresh[1] === words[w + 1] && fresh[2] === words[w + 2] && fresh[3] === words[w + 3]) continue;
+      words[w] = fresh[0]; words[w + 1] = fresh[1]; words[w + 2] = fresh[2]; words[w + 3] = fresh[3];
       this.tintChanged.push(i);
     }
   }
@@ -1291,7 +1440,7 @@ export class Scene {
     const capacity = this.transforms.capacity;
     if (this._tintHas.length >= capacity) return;
     this._tintHas = growArray(this._tintHas, capacity);
-    this._tintAt = growArray(this._tintAt, capacity, 6);
+    this._tintAt = growArray(this._tintAt, capacity, TINT_FLOATS);
     this._tintMoved = growArray(this._tintMoved, capacity);
   }
 
@@ -1408,7 +1557,7 @@ export class Scene {
         if (this.renderableHidden[i] === 1) this.hiddenRenderables--;
         this.renderableHidden[i] = this.renderableHidden[last];
         this.renderableHidden[last] = 0;
-        this.renderableTint.copyWithin(i * 3, last * 3, last * 3 + 3);
+        this.renderableTint.copyWithin(i * TINT_STRIDE, last * TINT_STRIDE, (last + 1) * TINT_STRIDE);
         this.renderableLodSlot[i] = this.renderableLodSlot[last];
         this.renderableLodSphere.copyWithin(i * 4, last * 4, last * 4 + 4);
         this.renderableCoverage.copyWithin(i * 2, last * 2, last * 2 + 2);
@@ -1424,7 +1573,7 @@ export class Scene {
       }
       this.renderablePrimitive[last] = undefined;
       this.renderableMorphExtent[last] = null;
-      this.renderableTint.fill(0, last * 3, last * 3 + 3);
+      this.renderableTint.fill(0, last * TINT_STRIDE, (last + 1) * TINT_STRIDE);
       this.revision = nextRevision++;
     }
 
@@ -1444,7 +1593,7 @@ export class Scene {
       delete this._names[slot];
       // A reused slot starts with none.
       if (this._tints.delete(slot)) { this._tintDirty = true; this._tintHas[slot] = 0; }
-      if (slot < this._tintHas.length) this._tintAt.fill(0, slot * 6, slot * 6 + 6);
+      if (slot < this._tintHas.length) this._tintAt.fill(0, slot * TINT_FLOATS, (slot + 1) * TINT_FLOATS);
     }
 
     // Lights on any doomed entity go too. Before the entities are freed, so
@@ -1461,6 +1610,8 @@ export class Scene {
       this.spritesChanged.delete(entity);
       this.sprites.delete(entity);
       this.emitters.delete(entity);
+      this.trails.delete(entity);
+      this.outlines.delete(handleIndex(entity));
       this.splats.delete(entity);
       this.decals.delete(entity);
       this.texts.delete(entity);
@@ -1628,6 +1779,8 @@ export class Scene {
   tilemapOf(node) { return copyOf(this.tilemaps, node); }
   /** An emitter's options, or null. A copy: change it through setEmitter. */
   emitterOf(node) { return copyOf(this.emitters, node); }
+  /** A trail's options, or null. A copy: change it through setTrail. */
+  trailOf(node) { return copyOf(this.trails, node); }
   /** A splat node's options -- { splats } -- or null. */
   splatsOf(node) { return copyOf(this.splats, node); }
   /** A decal's options, or null. A copy: change it through setDecal. */
@@ -1816,6 +1969,44 @@ export class Scene {
     next.added = current.added;
     this.emitters.set(node.entity, next);
     if (next.layer !== current.layer) this.spriteOrder++;
+  }
+
+  /**
+   * A ribbon behind a node as it moves: a sword's swing, a shell's streak, a
+   * contrail. Returns the node it streams from; parent it to what leaves the
+   * trail, or move it yourself. Aged by scene.time, so advance the scene.
+   */
+  addTrail(given = {}) {
+    checkOptions('addTrail', given);
+    const { position = [0, 0, 0], parent = null, ...options } = given;
+    const record = trailRecord(options);
+    this.changes++;
+    const node = this.createNode({ parent }, 'addTrail');
+    node.setPosition(...position);
+    this.trails.set(node.entity, record);
+    return node;
+  }
+
+  /** Change a trail's options; the same names addTrail takes. What it has drawn stays. */
+  setTrail(node, changes) {
+    checkOptions('setTrail', changes);
+    const current = this.trails.get(node.entity);
+    if (current === undefined) throw new Error('setTrail: this node has no trail');
+    const next = trailRecord({ ...current.options, ...changes }, 'setTrail');
+    next.samples = current.samples;
+    next.start = current.start;
+    next.count = current.count;
+    this.trails.set(node.entity, next);
+    this.changes++;
+  }
+
+  /** Drop all a trail has drawn, for a node moved somewhere new: a pooled shell fired again, a respawn. */
+  clearTrail(node) {
+    const record = this.trails.get(node.entity);
+    if (record === undefined) throw new Error('clearTrail: this node has no trail');
+    record.count = 0;
+    record.start = 0;
+    this.changes++;
   }
 
   /** Emit `count` particles at once, on the next frame. */
@@ -2417,7 +2608,13 @@ export class Scene {
    * one it is the same code on this thread. Identical results either way.
    */
   update(jobs = null) {
-    const recomposed = jobs?.parallel ? this.transforms.updateParallel(jobs) : this.transforms.update();
+    let recomposed = jobs?.parallel ? this.transforms.updateParallel(jobs) : this.transforms.update();
+    // Inverse kinematics over the pose just composed, each composing what it turned for the next.
+    for (let k = 0; k < this._ik.length; k++) {
+      const record = this._ik[k];
+      if (!ikAlive(record)) { this._ik.splice(k--, 1); continue; }
+      if (solveIK(this.transforms, record)) recomposed += this.transforms.update();
+    }
     if (this._visibilityDirty) this._refreshVisibility();
     if (this._tintDirty) this._refreshTints();
     if (this.reflectionProbes.length > 0) this._placeProbes();
@@ -2551,6 +2748,7 @@ export class Scene {
    * yourself when you drive renderFrame.
    */
   advance(dt) {
+    if (dt > 0) this.time += dt;
     this._advanceAnimations(dt);
     this._advanceParticles(dt);
   }
@@ -2707,6 +2905,7 @@ export class Scene {
       updateSkinBounds(this.skins, this.transforms.world);
       applySkinBounds(
         this.renderableCount, this.renderableSkin, this.skins, this.worldMin, this.worldMax,
+        this.renderableMorph, this.renderableMorphPad,
       );
     }
     if (this.morphs.length > 0) this.applyMorphBounds();

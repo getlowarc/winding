@@ -692,7 +692,7 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     // And the draw data carries both, on a batch the renderer calls skinned.
     const gpu = engine.renderer.gpu;
     const word = index * (DRAW_DATA_BYTES / 4);
-    const targets = gpu.drawDataU32[word + 31] & 0xffff;
+    const targets = gpu.drawDataU32[word + 22] & 0xffff;
     if (targets !== 1) throw new Error(`draw data says ${targets} targets, expected 1`);
 
     let skinnedBatches = 0;
@@ -1339,6 +1339,222 @@ fn main(@builtin(global_invocation_id) id : vec3<u32>) {
     const report = `${scrolled} cascades scrolled and ${whole} drawn whole over 90 frames; against all redrawn, ${differ} channels differ, most by ${most}`;
     // Rounding where the strips meet may move a texel's edge: a level or two, rarely.
     if (!(scrolled > whole && differ <= kept.length * 0.001 && most <= 2)) throw new Error(report);
+    return report;
+  });
+
+  await step('a mirrored node is lit as its unmirrored twin', async () => {
+    // The vertex shader makes the normal matrix from the model matrix; a
+    // negative scale must turn it back over, or a mirrored floor faces down
+    // and goes dark under a sun straight above.
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const brightness = async (scale) => {
+      const scene = engine.createScene();
+      scene.add(ground).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(...scale);
+      scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const i = (Math.floor(engine.gpu.height / 2) * engine.gpu.width + Math.floor(engine.gpu.width / 2)) * 4;
+      return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+    };
+    const plain = await brightness([5, 5, 1]), mirrored = await brightness([-5, 5, 1]), squashed = await brightness([5, 0.5, 1]);
+    const report = `plain ${plain.toFixed(0)}, mirrored ${mirrored.toFixed(0)}, squashed ${squashed.toFixed(0)}`;
+    if (!(plain > 40 && Math.abs(mirrored - plain) <= 2 && Math.abs(squashed - plain) <= 2)) throw new Error(report);
+    return report;
+  });
+
+  await step('a surface hook recolours its materials, reads its node\'s params, and can cut holes', async () => {
+    // Red where params.x is 0, cut away where it is past a half; the same
+    // floor loaded without the hook stays grey. Params come down from a parent.
+    const hook = await engine.createSurfaceHook(`
+      fn surface(s : ptr<function, HookedSurface>) {
+        if ((*s).params.x > 0.5) { discard; }
+        (*s).baseColor = vec4<f32>((*s).baseColor.r, 0.0, 0.0, (*s).baseColor.a);
+      }`);
+    let threw = '';
+    try { await engine.createSurfaceHook('fn surface(s : ptr<function, HookedSurface>) { (*s).nope = 1.0; }'); } catch (error) { threw = error.message; }
+    if (!/nope/.test(threw)) throw new Error(`a broken hook should throw the compiler's message, got "${threw}"`);
+    const bytes = buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 });
+    const plainFloor = await engine.load(bytes), hookedFloor = await engine.load(bytes, { hook });
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const centre = async (asset, params = null) => {
+      const scene = engine.createScene();
+      const parent = scene.createNode();
+      if (params) parent.setHookParams(...params);
+      if (asset) scene.add(asset, { parent }).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+      scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const i = (Math.floor(engine.gpu.height / 2) * engine.gpu.width + Math.floor(engine.gpu.width / 2)) * 4;
+      return [pixels[i], pixels[i + 1], pixels[i + 2]];
+    };
+    const plain = await centre(plainFloor), red = await centre(hookedFloor), cut = await centre(hookedFloor, [1, 0]);
+    const empty = await centre(null);
+    const report = `plain ${plain}, hooked ${red}, hooked with params.x 1 from its parent ${cut}, no floor ${empty}`;
+    if (!(plain[1] > 100 && Math.abs(plain[0] - plain[1]) < 10)) throw new Error(`unhooked floor not grey: ${report}`);
+    if (!(red[0] > 100 && red[1] < 20)) throw new Error(`hooked floor not red: ${report}`);
+    if (!cut.every((c, k) => Math.abs(c - empty[k]) <= 2)) throw new Error(`params.x 1 did not cut the floor: ${report}`);
+    return report;
+  });
+
+  await step('dynamic resolution drops under an impossible target and climbs back with room to spare', async () => {
+    const renderer = engine.renderer;
+    if (!renderer.gpuTiming.available) return 'no timestamp-query on this device: dynamic resolution does nothing, as documented';
+    const scene = engine.createScene();
+    scene.add(await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1] }))).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const wasTiming = renderer.gpuTiming.enabled;
+    const frames = async (n) => {
+      for (let i = 0; i < n; i++) {
+        engine.renderFrame(scene, cam);
+        await engine.gpu.device.queue.onSubmittedWorkDone();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    };
+    try {
+      renderer.dynamicResolution = { target: 0.0001 };
+      await frames(40);
+      const down = renderer.resolution;
+      renderer.dynamicResolution = { target: 1e6, max: 0.6 };
+      await frames(60);
+      const up = renderer.resolution;
+      renderer.dynamicResolution = null;
+      await frames(1);
+      const report = `impossible target: ${down}; then room to spare, max 0.6: ${up}; off again, timing ${renderer.gpuTiming.enabled ? 'on' : 'off'}`;
+      if (!(down === 0.5 && up === 0.6 && renderer.gpuTiming.enabled === wasTiming)) throw new Error(report);
+      return report;
+    } finally {
+      renderer.dynamicResolution = null;
+      renderer.resolution = 1;
+    }
+  });
+
+  await step('an outline rings what is under its node, hides behind what is in front unless it shows through', async () => {
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const block = await engine.load(buildFeatureGLB({ baseColorFactor: [0.2, 0.2, 0.2, 1] }));
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const frame = async (y, outline) => {
+      const scene = engine.createScene();
+      scene.add(ground).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(5, 5, 1);
+      const unit = scene.createNode();
+      scene.add(block, { parent: unit }).setAxisAngle([1, 0, 0], Math.PI / 2).setScale(0.6, 0.6, 1).setPosition(0, y, 0);
+      if (outline) unit.setOutline(...outline);
+      scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+      engine.renderFrame(scene, cam);
+      return { pixels: await engine.gpu.readPixels(), outlined: engine.stats.outlined };
+    };
+    const changed = (a, b) => {
+      let n = 0, red = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) <= 6) continue;
+        n++;
+        if (b[i] - a[i] > b[i + 1] - a[i + 1]) red++;
+      }
+      return { n, red };
+    };
+    const plain = await frame(1, null), ringed = await frame(1, [[1, 0, 0], { width: 3 }]);
+    const above = changed(plain.pixels, ringed.pixels);
+    const hidden = await frame(-1, null);
+    const behind = changed(hidden.pixels, (await frame(-1, [[1, 0, 0], { width: 3 }])).pixels);
+    const through = changed(hidden.pixels, (await frame(-1, [[1, 0, 0], { width: 3, through: true }])).pixels);
+    const report = `in view: ${above.n} pixels changed, ${above.red} red (${ringed.outlined} outlined); under the floor: ${behind.n}; through it: ${through.n}, ${through.red} red`;
+    if (!(ringed.outlined === 1 && above.n > 100 && above.red >= above.n * 0.9)) throw new Error(`no ring: ${report}`);
+    if (behind.n !== 0) throw new Error(`an outline behind the floor showed: ${report}`);
+    if (!(through.n > 100 && through.red >= through.n * 0.9)) throw new Error(`through did not show: ${report}`);
+    return report;
+  });
+
+  await step('motion blur smears what moves and leaves what is still, the camera\'s own motion included or not', async () => {
+    const renderer = engine.renderer;
+    const ground = await engine.load(buildFeatureGLB({ baseColorFactor: [0.8, 0.8, 0.8, 1], roughnessFactor: 0.9 }));
+    const block = await engine.load(buildFeatureGLB({ baseColorFactor: [0.05, 0.05, 0.05, 1] }));
+    const scene = engine.createScene();
+    scene.add(ground).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(8, 8, 1);
+    const unit = scene.add(block).setAxisAngle([1, 0, 0], -Math.PI / 2).setScale(0.6, 0.6, 1).setPosition(0, 1, 0);
+    scene.addLight({ type: 'directional', direction: [0, -1, 0], intensity: 3 });
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    const look = (x) => { cam.position.set([x, 6, 0.01]); cam.target.set([x, 0, 0]); };
+    // Pixels along the middle row between the block's darkness and the floor's light: a sharp edge has few.
+    const between = async () => {
+      const pixels = await engine.gpu.readPixels();
+      const { width, height } = engine.gpu;
+      const row = Math.floor(height / 2) * width * 4;
+      let n = 0;
+      for (let x = 0; x < width; x++) {
+        const l = 0.2126 * pixels[row + x * 4] + 0.7152 * pixels[row + x * 4 + 1] + 0.0722 * pixels[row + x * 4 + 2];
+        if (l > 40 && l < 160) n++;
+      }
+      return { n, pixels };
+    };
+    const twoFrames = async (from, to, camFrom = 0, camTo = 0) => {
+      unit.setPosition(from, 1, 0); look(camFrom);
+      engine.renderFrame(scene, cam);
+      unit.setPosition(to, 1, 0); look(camTo);
+      engine.renderFrame(scene, cam);
+      return between();
+    };
+    try {
+      renderer.motionBlur = null;
+      const sharpStill = await twoFrames(0, 0), sharpMoving = await twoFrames(-0.6, 0);
+      renderer.motionBlur = { strength: 1 };
+      engine.renderFrame(scene, cam);
+      await renderer._pipelinesBuilt();
+      const blurStill = await twoFrames(0, 0), blurMoving = await twoFrames(-0.6, 0);
+      const drewMotion = renderer._frameVelocity;
+      let still = 0;
+      for (let i = 0; i < blurStill.pixels.length; i++) still = Math.max(still, Math.abs(blurStill.pixels[i] - sharpStill.pixels[i]));
+      const cameraBlur = await twoFrames(0, 0, -0.6, 0);
+      renderer.motionBlur = { strength: 1, camera: false };
+      const cameraOnly = await twoFrames(0, 0, -0.6, 0);
+      renderer.motionBlur = null;
+      const cameraSharp = await twoFrames(0, 0, -0.6, 0);
+      const report = `between block and floor on the middle row: still ${sharpStill.n} -> ${blurStill.n} with blur (most change ${still}), `
+        + `moving ${sharpMoving.n} -> ${blurMoving.n}${drewMotion ? '' : ' (drawn without motion)'}; camera moving: ${cameraBlur.n} with its motion, ${cameraOnly.n} left out, ${cameraSharp.n} unblurred`;
+      if (still > 2) throw new Error(`a still frame changed: ${report}`);
+      if (!(blurMoving.n > sharpMoving.n + 15)) throw new Error(`the moving block did not smear: ${report}`);
+      if (Math.abs(cameraOnly.n - cameraSharp.n) > 3) throw new Error(`camera: false still blurred the camera's motion: ${report}`);
+      if (!(cameraBlur.n > cameraSharp.n + 15)) throw new Error(`the camera's own motion did not blur: ${report}`);
+      return report;
+    } finally {
+      renderer.motionBlur = null;
+    }
+  });
+
+  await step('a trail draws where its node went, and is gone once cleared', async () => {
+    // Seen from above, a bright trail swept across the middle of the view
+    // over twenty frames; the middle pixel against the same view without it.
+    const cam = new Camera({ fovY: Math.PI / 3, near: 0.1 });
+    cam.position.set([0, 6, 0.01]);
+    cam.target.set([0, 0, 0]);
+    const scene = engine.createScene();
+    const middle = async () => {
+      engine.renderFrame(scene, cam);
+      const pixels = await engine.gpu.readPixels();
+      const i = (Math.floor(engine.gpu.height / 2) * engine.gpu.width + Math.floor(engine.gpu.width / 2)) * 4;
+      return 0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2];
+    };
+    const before = await middle();
+    const trail = scene.addTrail({ width: 0.5, lifetime: 10, color: [2, 2, 2, 1], position: [-2, 1, 0] });
+    for (let i = 0; i <= 20; i++) {
+      trail.setPosition(-2 + i * 0.2, 1, 0);
+      scene.advance(1 / 60);
+      engine.renderFrame(scene, cam);
+    }
+    const drawn = await middle();
+    const trails = engine.stats.trails;
+    scene.clearTrail(trail);
+    const cleared = await middle();
+    const report = `middle ${before.toFixed(0)} without, ${drawn.toFixed(0)} with (${trails} drawn), ${cleared.toFixed(0)} cleared`;
+    if (!(drawn > before + 40 && trails === 1)) throw new Error(`no trail: ${report}`);
+    if (Math.abs(cleared - before) > 2) throw new Error(`a cleared trail still drew: ${report}`);
     return report;
   });
 

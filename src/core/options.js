@@ -21,10 +21,10 @@ export const OPTIONS = {
   'create shadows': ['size', 'cascades', 'lambda', 'casterExtent', 'normalBias', 'depthBiasSlope', 'depthBiasConstant', 'localSize'],
   'create post': ['threshold', 'knee', 'filterRadius', 'strength', 'levels', 'antialias', 'grading'],
   createScene: ['environment', 'capacity', 'renderableCapacity', 'lightCapacity'],
-  load: ['retainGeometry', 'baseURL', 'fetch'],
+  load: ['retainGeometry', 'baseURL', 'fetch', 'hook'],
   loadTexture: ['srgb', 'pixelated', 'label', 'fetch'],
   createMesh: ['positions', 'indices', 'normals', 'uvs', 'colors', 'material'],
-  'createMesh material': ['color', 'metallic', 'roughness', 'emissive', 'doubleSided'],
+  'createMesh material': ['color', 'metallic', 'roughness', 'emissive', 'doubleSided', 'hook'],
   loadLUT: ['fetch'],
   loadSplats: ['fetch'],
   loadEnvironment: ['fetch', 'size', 'irradianceSize', 'prefilterMips', 'label'],
@@ -33,6 +33,11 @@ export const OPTIONS = {
   createTarget: ['size', 'pixelated', 'label'],
   grading: ['whiteBalance', 'contrast', 'saturation', 'lut'],
   autoExposure: ['min', 'max', 'brighten', 'darken'],
+  dynamicResolution: ['target', 'min', 'max'],
+  motionBlur: ['strength', 'samples', 'camera', 'maxPixels'],
+  setOutline: ['width', 'through'],
+  addIK: ['type', 'end', 'target', 'pole', 'weight', 'node', 'axis', 'limit'],
+  setIK: ['type', 'end', 'target', 'pole', 'weight', 'node', 'axis', 'limit'],
   fog: ['visibility', 'height', 'scaleHeight', 'albedo'],
   dof: ['focusDistance', 'fStop', 'sensorHeight'],
   Scene: ['capacity', 'renderableCapacity', 'lightCapacity'],
@@ -49,6 +54,7 @@ export const OPTIONS = {
   addEmitter: ['rate', 'lifetime', 'size', 'sizeEnd', 'speed', 'direction', 'spread', 'radius', 'acceleration', 'drag',
     'color', 'colorEnd', 'texture', 'blend', 'layer', 'position', 'parent'],
   addDecal: ['texture', 'size', 'color', 'position', 'parent'],
+  addTrail: ['width', 'widthEnd', 'lifetime', 'color', 'colorEnd', 'texture', 'blend', 'emitting', 'position', 'parent'],
   addProbe: ['size', 'fade', 'position', 'parent'],
   addSplats: ['splats', 'position', 'parent'],
   addSprite: ['texture', 'position', 'parent', 'size', 'pixels', 'color', 'rect', 'pivot', 'angle', 'facing', 'blend',
@@ -70,7 +76,7 @@ export const OPTIONS = {
 };
 
 // A kind's setX takes the names its addX does, less where it is, which is the node's.
-for (const kind of ['Light', 'Emitter', 'Decal', 'Probe', 'Sprite', 'Text', 'Shape', 'Path', 'Tilemap']) {
+for (const kind of ['Light', 'Emitter', 'Trail', 'Decal', 'Probe', 'Sprite', 'Text', 'Shape', 'Path', 'Tilemap']) {
   OPTIONS[`set${kind}`] = OPTIONS[`add${kind}`].filter((key) => key !== 'position' && key !== 'parent');
 }
 

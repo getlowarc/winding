@@ -1412,4 +1412,21 @@ test('seeking, looping or turning round a finished clip plays it again', () => {
   close(t.x(ARM), 5, 1e-6, 'turned round, it plays back');
 });
 
+test('a player snapshot puts back what played, where, and lets go of what did not', () => {
+  const player = new AnimationPlayer([
+    clip('translation', [0, 2], [0, 0, 0, 10, 0, 0], 'LINEAR', 'walk'),
+    clip('translation', [0, 2], [0, 0, 0, 0, 10, 0], 'LINEAR', 'wave'),
+  ], ENTITY_OF, ENTITIES);
+  const t = recorder();
+  player.play('walk', { speed: 0.5, loop: false });
+  player.advance(0.6, t);
+  const saved = JSON.parse(JSON.stringify(player._snapshot()));
+  player.play('wave');
+  player.advance(1.5, t);
+  player._restore(saved);
+  assert.equal(player.clip.name, 'walk');
+  assert.ok(Math.abs(player.time - 0.3) < 1e-9 && player.speed === 0.5 && player.loop === false, `walk, at ${player.time}`);
+  assert.deepEqual(player.layers[0].released.map((c) => c.name), ['wave'], 'wave let go: back to the rest pose');
+});
+
 console.log(`\n${passed} checks passed\n`);

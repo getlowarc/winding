@@ -8,10 +8,9 @@
 // any order. Run after the transforms have composed.
 
 import { aabbTransform } from '../core/math/aabb.js';
-import { mat4NormalMatrix } from '../core/math/mat4.js';
 
 /** Floats of one renderable's draw data: DRAW_DATA_BYTES / 4 in gpudriven.js. */
-const DRAW_FLOATS = 32;
+const DRAW_FLOATS = 24;
 /** Floats of one renderable's cull bounds: BOUNDS_FLOATS in gpudriven.js. */
 const BOUNDS_FLOATS = 12;
 
@@ -32,9 +31,9 @@ export function boundsRange(columns, start, end, all) {
 }
 
 /**
- * The draw data of items[start..end): the model matrix and its normal matrix,
- * the tint and glow words in the normal matrix's padding (see DrawData in
- * shaders/pbr.js), where its joints begin, and zero morph words -- the
+ * The draw data of items[start..end): the model matrix, the tint and glow
+ * words (see DrawData in shaders/pbr.js), where its joints begin, and zero
+ * morph words -- the
  * renderer writes them over for what is morphed, from its primitives. And its
  * cull bounds: the world box, the coverage it draws between, and its LOD
  * group's sphere through that group's world matrix, or a negative radius to
@@ -47,17 +46,16 @@ export function drawDataRange(columns, start, end) {
     const i = items[k];
     const w = matrixSlot[i] * 16, o = i * DRAW_FLOATS;
     for (let j = 0; j < 16; j++) drawData[o + j] = world[w + j];
-    mat4NormalMatrix(drawData, world, o + 16, w);
-    // After the normal matrix, whose padding it writes as zeros.
-    drawWords[o + 19] = tint[i * 3];
-    drawWords[o + 23] = tint[i * 3 + 1];
-    drawWords[o + 27] = tint[i * 3 + 2];
+    drawWords[o + 16] = tint[i * 4];
+    drawWords[o + 17] = tint[i * 4 + 1];
+    drawWords[o + 18] = tint[i * 4 + 2];
+    drawWords[o + 23] = tint[i * 4 + 3];
     // Zero for anything unskinned, which the unskinned vertex shader never reads anyway.
     const s = skin[i];
-    drawWords[o + 28] = s >= 0 ? paletteOffsets[s] : 0;
-    drawWords[o + 29] = 0;
-    drawWords[o + 30] = 0;
-    drawWords[o + 31] = 0;
+    drawWords[o + 19] = s >= 0 ? paletteOffsets[s] : 0;
+    drawWords[o + 20] = 0;
+    drawWords[o + 21] = 0;
+    drawWords[o + 22] = 0;
 
     const b = i * BOUNDS_FLOATS, v = i * 3;
     boundsData[b] = worldMin[v];

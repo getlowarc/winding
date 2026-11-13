@@ -9,7 +9,7 @@ import { Camera } from '../src/scene/camera.js';
 import { quatCreate, quatSetAxisAngle } from '../src/core/math/quat.js';
 import { vec3Create } from '../src/core/math/vec3.js';
 import { Scene } from '../src/scene/scene.js';
-import { updateWorldBounds, applyMorphBounds, saveBoxes, moveUnion } from '../src/scene/bounds.js';
+import { updateWorldBounds, applySkinBounds, applyMorphBounds, saveBoxes, moveUnion } from '../src/scene/bounds.js';
 
 let passed = 0;
 function test(name, fn) {
@@ -795,11 +795,40 @@ test('a skinned and morphed renderable gets both corrections', () => {
     [{ weights: Float32Array.from([0.5]) }], [Float32Array.from([4])],
     new Float32Array(3), new Float32Array(3), min, max,
     new Float32Array(16), Uint32Array.from([0]), new Float32Array(1),
-    [{ hasBounds: true }],                      // applySkinBounds built this box
+    // The skin's box, as applySkinBounds built it.
+    [{ hasBounds: true, boundsMin: Float32Array.of(-1, -1, -1), boundsMax: Float32Array.of(1, 1, 1) }],
   );
   assert.equal(changed, 1);
   close(min[0], -3, EPS, 'grown by 0.5 * 4');
   close(max[2], 3, EPS, 'grown by 0.5 * 4');
+});
+
+test('a still character, skinned and morphed, and a still morphed mesh change nothing after the first frame', () => {
+  // The skin pass compared its box with the bare skin box while the morph pass
+  // had grown it, and the pad, a double, never equalled the Float32Array that
+  // keeps it: both counted a change every frame, standing still, at weight 0.3.
+  const skin = { hasBounds: true, boundsMin: Float32Array.of(-1, 0, -1), boundsMax: Float32Array.of(1, 2, 1) };
+  const renderableSkin = Int32Array.of(0, -1), renderableMorph = Int32Array.of(0, 1);
+  const morphs = [{ weights: Float32Array.of(0.3) }, { weights: Float32Array.of(0.3) }];
+  const extents = [Float32Array.of(0.7), Float32Array.of(0.7)];
+  const localMin = Float32Array.of(0, 0, 0, -1, -1, -1), localMax = Float32Array.of(0, 0, 0, 1, 1, 1);
+  const worldMin = new Float32Array(6), worldMax = new Float32Array(6), pads = new Float32Array(2);
+  const identity = Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+  const frame = () => [
+    applySkinBounds(2, renderableSkin, [skin], worldMin, worldMax, renderableMorph, pads),
+    applyMorphBounds(2, renderableMorph, renderableSkin, morphs, extents, localMin, localMax, worldMin, worldMax,
+      identity, Int32Array.of(0, 0), pads, [skin]),
+  ];
+  assert.deepEqual(frame(), [1, 2], 'the first frame builds both');
+  const box = Array.from(worldMin.subarray(0, 3));
+  assert.deepEqual(frame(), [0, 0], 'then nothing has changed');
+  assert.deepEqual(frame(), [0, 0], 'and still nothing');
+  assert.deepEqual(Array.from(worldMin.subarray(0, 3)), box, 'the box is not grown again');
+  close(worldMin[0], -1 - 0.3 * 0.7, 1e-6, 'the skin box grown by the pad, once');
+  // A weight that does change still counts, and grows the box from the skin's, not from last frame's.
+  morphs[0].weights[0] = 0.6;
+  assert.deepEqual(frame(), [0, 1], 'the pad changed');
+  close(worldMin[0], -1 - 0.6 * 0.7, 1e-6, 'grown by the new pad, from the skin box');
 });
 
 test('a skinned and morphed renderable whose skin has no bounds does not grow every frame', () => {
@@ -1229,6 +1258,116 @@ test('world position and rotation are set and kept through parents, from where t
   assert.throws(() => child.setWorldPosition(0, 0, 0), /^Error: setWorldPosition: a parent is scaled to zero/);
   assert.throws(() => hand.setParent(flat, { keepWorld: true }), /^Error: setParent: the new parent is scaled to zero/);
   assert.equal(scene.transforms.parent[handleIndex(hand.entity)], -1, 'not moved under it');
+});
+
+/** A leg: a hip at (0, 2, 0), a knee a metre below it, a foot a metre below that, knee bent a little forward. */
+function leg() {
+  const scene = new Scene({ capacity: 64 });
+  const hip = scene.createNode().setPosition(0, 2, 0);
+  const knee = scene.createNode({ parent: hip }).setPosition(0, -1, 0.05);
+  const foot = scene.createNode({ parent: knee }).setPosition(0, -1, -0.05);
+  scene.update();
+  const at = (node) => Array.from(node.worldPosition([0, 0, 0]));
+  const near = (a, b, tol, what) => assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < tol, `${what}: ${a.map((v) => v.toFixed(3))} for ${b.map((v) => v.toFixed(3))}`);
+  return { scene, hip, knee, foot, at, near };
+}
+
+test('two-bone IK puts the foot on the target, bends the knee toward the pole, and straightens out of reach', () => {
+  const { scene, hip, knee, foot, at, near } = leg();
+  const ik = scene.addIK({ type: 'twoBone', end: foot, target: [0.5, 0.6, 0.3], pole: [0, 1, 5] });
+  scene.update();
+  near(at(foot), [0.5, 0.6, 0.3], 1e-4, 'the foot on the target');
+  const thigh = Math.hypot(...at(knee).map((v, k) => v - at(hip)[k]));
+  assert.ok(Math.abs(thigh - Math.hypot(1, 0.05)) < 1e-5, `the thigh keeps its length: ${thigh}`);
+  assert.ok(at(knee)[2] > 0.3, `the knee toward the pole, forward: ${at(knee)}`);
+  scene.setIK(ik, { pole: [0, 1, -5] });
+  scene.update();
+  near(at(foot), [0.5, 0.6, 0.3], 1e-4, 'still on it');
+  assert.ok(at(knee)[2] < 0.3, `the knee follows the pole back: ${at(knee)}`);
+  scene.setIK(ik, { target: [0, 2, 9] });
+  scene.update();
+  const reach = at(foot).map((v, k) => v - at(hip)[k]);
+  const length = Math.hypot(...reach);
+  near(reach.map((v) => v / length), [0, 0, 1], 1e-3, 'out of reach: straight at it');
+});
+
+test('IK starts each frame from the pose under it: weight does not creep, a still leg stays still, and removing it puts the pose back', () => {
+  const { scene, foot, at, near } = leg();
+  const before = at(foot);
+  const ik = scene.addIK({ type: 'twoBone', end: foot, target: [0.4, 0.8, 0.2], weight: 0.5 });
+  scene.update();
+  const half = before.map((v, k) => v + ([0.4, 0.8, 0.2][k] - v) * 0.5);
+  near(at(foot), half, 1e-4, 'half the way there');
+  for (let i = 0; i < 5; i++) scene.update();
+  near(at(foot), half, 1e-4, 'and still half, frames later');
+  assert.equal(scene.transforms.lastRecomputedCount, 0, 'nothing moved: nothing composed');
+  scene.removeIK(ik);
+  scene.update();
+  near(at(foot), before, 1e-5, 'removed: the pose underneath');
+  assert.throws(() => scene.setIK(ik, { weight: 1 }), /^Error: setIK: not an IK of this scene/);
+  assert.throws(() => scene.addIK({ type: 'twoBone', end: scene.createNode(), target: [0, 0, 0] }), /^Error: addIK: end must be a live node with a parent and a grandparent/);
+  assert.throws(() => scene.addIK({ type: 'reach', target: [0, 0, 0] }), /^Error: addIK: type is 'twoBone' or 'aim'/);
+});
+
+test('aim IK turns a bone to look at its target, no further than its limit, and follows a target node', () => {
+  const scene = new Scene({ capacity: 16 });
+  const head = scene.createNode().setPosition(0, 1, 0);
+  const ball = scene.createNode().setPosition(5, 1, 0);
+  const look = scene.addIK({ type: 'aim', node: head, target: ball });
+  scene.update();
+  const forward = () => {
+    const m = scene.transforms.world, o = handleIndex(head.entity) * 16;
+    return [m[o + 8], m[o + 9], m[o + 10]];
+  };
+  assert.ok(Math.abs(forward()[0] - 1) < 1e-5, `its +Z at the ball: ${forward()}`);
+  ball.setPosition(0, 1, -5);
+  scene.update();
+  assert.ok(Math.abs(forward()[2] + 1) < 1e-5, `the ball moved behind it: ${forward()}`);
+  scene.setIK(look, { limit: Math.PI / 4 });
+  ball.setPosition(5, 1, 0);
+  scene.update();
+  assert.ok(Math.abs(Math.atan2(forward()[0], forward()[2]) - Math.PI / 4) < 1e-4, `turned 45 degrees and no more: ${forward()}`);
+  ball.destroy();
+  scene.update();
+  assert.equal(scene._ik.length, 0, 'its target gone: dropped');
+});
+
+test('a snapshot round-trips through JSON into a scene built again, by path, and says what it could not find', () => {
+  const build = (extra = false) => {
+    const scene = new Scene({ capacity: 64 });
+    const army = scene.createNode({ name: 'Army' });
+    const a = scene.createNode({ parent: army, name: 'Soldier' });
+    const b = scene.createNode({ parent: army, name: 'Soldier' });
+    const c = scene.createNode({ parent: army });
+    if (extra) scene.createNode({ name: 'Late' });
+    scene.update();
+    return { scene, army, a, b, c };
+  };
+  const first = build();
+  first.a.setPosition(1, 2, 3).setTint([0.5, 1, 1]).setOutline([1, 0, 0], { width: 3 });
+  first.b.setPosition(4, 5, 6).setVisible(false).setHookParams(0.25);
+  first.c.setScale(2, 2, 2).setGlow([1, 0, 0]);
+  const snap = JSON.parse(JSON.stringify(first.scene.snapshot()));
+  assert.deepEqual(snap.nodes.map((n) => n.path), ['Army', 'Army/Soldier', 'Army/Soldier@1', 'Army/#']);
+
+  const second = build();
+  second.a.setTint([0, 0, 1]);
+  const result = second.scene.restore(snap);
+  second.scene.update();
+  assert.deepEqual(result, { restored: 4, missing: [] });
+  assert.deepEqual(Array.from(second.a.worldPosition([0, 0, 0])), [1, 2, 3]);
+  assert.deepEqual(second.a.tint, [0.5, 1, 1]);
+  assert.deepEqual(second.a.outline, { color: [1, 0, 0, 1], width: 3, through: false });
+  assert.ok(!second.b.visible && second.b.hookParams[0] === 0.25);
+  assert.deepEqual(second.c.glow, [1, 0, 0]);
+
+  // Under a root: paths from it, and only what is under it.
+  const part = first.scene.snapshot(first.army);
+  assert.deepEqual(part.nodes.map((n) => n.path), ['', 'Soldier', 'Soldier@1', '#']);
+  const third = build(true);
+  third.scene.restore({ ...snap, nodes: [...snap.nodes, { ...snap.nodes[0], path: 'Gone' }] });
+  assert.deepEqual(third.scene.restore({ version: 1, nodes: [{ ...snap.nodes[1], path: 'Nowhere/Soldier' }] }), { restored: 0, missing: ['Nowhere/Soldier'] });
+  assert.throws(() => third.scene.restore({ nodes: [] }), /^Error: restore: not a snapshot scene.snapshot made/);
 });
 
 console.log(`\n${passed} checks passed\n`);

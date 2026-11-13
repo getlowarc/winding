@@ -51,20 +51,20 @@ These hold everywhere, so one learned is one learned for good.
 <a id="contents"></a>
 ## Contents
 
-[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Lights](#lights) · [Particles](#particles) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
+[Winding](#winding) · [Renderer settings](#renderer-settings) · [Debug lines](#debug-lines) · [Scene](#scene) · [Node](#node) · [Camera](#camera) · [Animation](#animation) · [Inverse kinematics](#inverse-kinematics) · [Lights](#lights) · [Particles](#particles) · [Trails](#trails) · [Gaussian splats](#splats) · [Decals](#decals) · [Reflection probes](#reflection-probes) · [Sprites](#sprites) · [Text](#text) · [Shapes](#shapes) · [Paths](#paths) · [Tilemaps](#tilemaps) · [Camera2D](#camera2d) · [The 2D view](#the-2d-view) · [Input](#input) · [OrbitController](#orbitcontroller) · [StatsOverlay](#statsoverlay) · [Benchmark](#benchmark) · [Environment and HDR](#environment-and-hdr) · [Colour helpers](#colour-helpers) · [Math](#math) · [Renamed in 1.0](#renamed)
 
 <a id="index"></a>
 ## Index
 
 Every call, setting and entry, A to Z by its name.
 
-**A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes)
+**A** &nbsp; [`aabb`](#math-aabb) · [`scene.add()`](#scene-add) · [`scene.addDecal()`](#scene-adddecal) · [`scene.addEmitter()`](#scene-addemitter) · [`scene.addLight()`](#scene-addlight) · [`scene.addPath()`](#scene-addpath) · [`scene.addProbe()`](#scene-addprobe) · [`scene.addShape()`](#scene-addshape) · [`scene.addSplats()`](#scene-addsplats) · [`scene.addSprite()`](#scene-addsprite) · [`scene.addText()`](#scene-addtext) · [`scene.addTilemap()`](#scene-addtilemap) · [`scene.advance()`](#scene-advance) · [`node.alive`](#node-alive) · [`camera.ambient`](#camera2d-ambient) · [`camera.angle`](#camera2d-angle) · [`node.animation`](#node-animation) · [`node.animations`](#node-animations) · [`engine.renderer.post.antialias`](#post-antialias) · [`engine.renderer.ao`](#renderer-ao) · [`engine.renderer.autoExposure`](#renderer-autoexposure) · [`engine.debug.axes()`](#debug-axes) · [`scene.addTrail()`](#scene-addtrail) · [`scene.addIK()`](#scene-addik)
 
-**B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst)
+**B** &nbsp; [`camera.background`](#camera2d-background) · [`new Benchmark()`](#benchmark) · [`scene.bounds()`](#scene-bounds) · [`engine.debug.box()`](#debug-box) · [`scene.burst()`](#scene-burst) · [`input.bind()`](#input-bind)
 
-**C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget)
+**C** &nbsp; [`Camera properties`](#camera-properties) · [`engine.createMesh()`](#engine-createmesh) · [`engine.createSurfaceHook()`](#engine-createsurfacehook) · [`new Camera()`](#camera) · [`new Camera2D()`](#camera2d) · [`engine.captureProbes()`](#engine-captureprobes) · [`node.children()`](#node-children) · [`scene.childrenOf()`](#scene-childrenof) · [`engine.debug.circle()`](#debug-circle) · [`engine.clock`](#engine-clock) · [`colorFromBytes()`](#color-colorfrombytes) · [`colorFromHex()`](#color-colorfromhex) · [`Winding.create()`](#winding-create) · [`scene.createNode()`](#scene-createnode) · [`engine.createScene()`](#engine-createscene) · [`engine.createTarget()`](#engine-createtarget) · [`scene.clearTrail()`](#scene-cleartrail)
 
-**D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox)
+**D** &nbsp; [`engine.debug`](#engine-debug) · [`scene.decalOf()`](#scene-decalof) · [`engine.debug.depthTest`](#debug-depthtest) · [`engine.destroy()`](#engine-destroy) · [`node.destroy()`](#node-destroy) · [`overlay.destroy()`](#statsoverlay-destroy) · [`orbit.detach()`](#orbitcontroller-detach) · [`engine.renderer.dof`](#renderer-dof) · [`orbit.dragged`](#orbitcontroller-dragged) · [`engine.renderer.drawSkybox` (renamed)](#renderer-drawskybox) · [`engine.renderer.dynamicResolution`](#renderer-dynamicresolution) · [`input.down()`](#input-down)
 
 **E** &nbsp; [`scene.emitterOf()`](#scene-emitterof) · [`engine.environment`](#engine-environment) · [`scene.environment`](#scene-environment) · [`new Environment()`](#environment) · [`engine.renderer.exposure`](#renderer-exposure)
 
@@ -72,33 +72,33 @@ Every call, setting and entry, A to Z by its name.
 
 **G** &nbsp; [`node.glow`](#node-glow) · [`engine.gpu`](#engine-gpu) · [`GPU lost`](#device-lost) · [`engine.grading`](#engine-grading) · [`engine.renderer.post.grading`](#post-grading)
 
-**H** &nbsp; [`HUD`](#view2d-hud)
+**H** &nbsp; [`node.hookParams`](#node-hookparams) · [`HUD`](#view2d-hud)
 
-**I** &nbsp; [`engine.invalidate()`](#engine-invalidate) · [`camera.is2D`](#camera2d-is2d)
+**I** &nbsp; [`engine.invalidate()`](#engine-invalidate) · [`camera.is2D`](#camera2d-is2d) · [`engine.input`](#engine-input)
 
 **K** &nbsp; [`engine.renderer.post.knee`](#post-knee)
 
-**L** &nbsp; [`engine.gpu.loseForTest()`](#engine-gpu-losefortest) · [`engine.renderer.lightDistance`](#renderer-lightdistance) · [`engine.renderer.post.levels`](#post-levels) · [`scene.lightOf()`](#scene-lightof) · [`engine.debug.line()`](#debug-line) · [`linearToSrgb()`](#color-lineartosrgb) · [`lit`](#view2d-lighting) · [`engine.load()`](#engine-load) · [`engine.loadEnvironment()`](#engine-loadenvironment) · [`engine.loadFont()`](#engine-loadfont) · [`engine.loadLUT()`](#engine-loadlut) · [`engine.loadSplats()`](#engine-loadsplats) · [`engine.loadTexture()`](#engine-loadtexture)
+**L** &nbsp; [`engine.gpu.loseForTest()`](#engine-gpu-losefortest) · [`engine.renderer.lightDistance`](#renderer-lightdistance) · [`engine.renderer.post.levels`](#post-levels) · [`scene.lightOf()`](#scene-lightof) · [`engine.debug.line()`](#debug-line) · [`linearToSrgb()`](#color-lineartosrgb) · [`lit`](#view2d-lighting) · [`engine.load()`](#engine-load) · [`engine.loadEnvironment()`](#engine-loadenvironment) · [`engine.loadFont()`](#engine-loadfont) · [`engine.loadLUT()`](#engine-loadlut) · [`engine.loadSplats()`](#engine-loadsplats) · [`engine.loadTexture()`](#engine-loadtexture) · [`input.lockPointer()`](#input-lockpointer)
 
-**M** &nbsp; [`mat4`](#math-mat4)
+**M** &nbsp; [`mat4`](#math-mat4) · [`engine.renderer.motionBlur`](#renderer-motionblur) · [`input.mouse`](#input-mouse)
 
 **N** &nbsp; [`node.name`](#node-name) · [`scene.node()`](#scene-node)
 
-**O** &nbsp; [`engine.renderer.oit`](#renderer-oit) · [`engine.onDemand`](#engine-ondemand) · [`new OrbitController()`](#orbitcontroller) · [`camera.orthographicHalfHeight()`](#camera-orthographichalfheight)
+**O** &nbsp; [`engine.renderer.oit`](#renderer-oit) · [`engine.onDemand`](#engine-ondemand) · [`new OrbitController()`](#orbitcontroller) · [`camera.orthographicHalfHeight()`](#camera-orthographichalfheight) · [`node.outline`](#node-outline)
 
-**P** &nbsp; [`Painter's order`](#view2d-order) · [`parseHDR()`](#parsehdr) · [`engine.prepare()`](#engine-prepare) · [`scene.particlesActive`](#scene-particlesactive) · [`scene.pathOf()`](#scene-pathof) · [`scene.pick()`](#scene-pick) · [`scene.pick()`](#scene-pick-2d) · [`camera.pivot`](#camera2d-pivot) · [`engine.gpu.pixelRatio`](#engine-gpu-pixelratio) · [`camera.pixelSnap`](#camera2d-pixelsnap) · [`node.play()`](#node-play) · [`camera.position`](#camera2d-position) · [`scene.probeOf()`](#scene-probeof)
+**P** &nbsp; [`Painter's order`](#view2d-order) · [`parseHDR()`](#parsehdr) · [`engine.prepare()`](#engine-prepare) · [`scene.particlesActive`](#scene-particlesactive) · [`scene.pathOf()`](#scene-pathof) · [`scene.pick()`](#scene-pick) · [`scene.pick()`](#scene-pick-2d) · [`camera.pivot`](#camera2d-pivot) · [`engine.gpu.pixelRatio`](#engine-gpu-pixelratio) · [`camera.pixelSnap`](#camera2d-pixelsnap) · [`node.play()`](#node-play) · [`camera.position`](#camera2d-position) · [`scene.probeOf()`](#scene-probeof) · [`input.pads`](#input-pads) · [`input.pressed()`](#input-pressed)
 
 **Q** &nbsp; [`quat`](#math-quat)
 
-**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run)
+**R** &nbsp; [`scene.raycast()`](#scene-raycast) · [`camera.rayFromScreen()`](#camera-rayfromscreen) · [`engine.gpu.readPixels()`](#engine-gpu-readpixels) · [`scene.remove()`](#scene-remove) · [`engine.renderer`](#engine-renderer) · [`engine.renderFrame()`](#engine-renderframe) · [`benchmark.report()`](#benchmark-report) · [`engine.renderer.post.requestedLevels` (renamed)](#post-requestedlevels) · [`engine.renderer.resolution`](#renderer-resolution) · [`engine.rhi` (renamed)](#engine-rhi) · [`camera.rotation` (renamed)](#camera2d-rotation) · [`engine.run()`](#engine-run) · [`benchmark.run()`](#benchmark-run) · [`scene.removeIK()`](#scene-removeik) · [`input.released()`](#input-released) · [`scene.restore()`](#scene-restore)
 
-**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera)
+**S** &nbsp; [`new Scene()`](#scene-constructor) · [`camera.screenToWorld()`](#camera2d-screentoworld) · [`node.setAngle()`](#node-setangle) · [`node.setAxisAngle()`](#node-setaxisangle) · [`scene.setDecal()`](#scene-setdecal) · [`node.setHookParams()`](#node-sethookparams) · [`node.setDirection()`](#node-setdirection) · [`scene.setEmitter()`](#scene-setemitter) · [`node.setEuler()`](#node-seteuler) · [`scene.setLight()`](#scene-setlight) · [`node.setParent()`](#node-setparent) · [`scene.setPath()`](#scene-setpath) · [`node.setPosition()`](#node-setposition) · [`scene.setProbe()`](#scene-setprobe) · [`node.setRotation()`](#node-setrotation) · [`node.setScale()`](#node-setscale) · [`node.setTint()`](#node-settint) · [`node.setGlow()`](#node-setglow) · [`node.setVisible()`](#node-setvisible) · [`node.setWorldPosition()`](#node-setworldposition) · [`node.setWorldRotation()`](#node-setworldrotation) · [`scene.setShape()`](#scene-setshape) · [`scene.setSprite()`](#scene-setsprite) · [`scene.setText()`](#scene-settext) · [`scene.setTile()`](#scene-settile) · [`scene.setTilemap()`](#scene-settilemap) · [`scene.setTiles()`](#scene-settiles) · [`engine.renderer.shadowDistance`](#renderer-shadowdistance) · [`engine.renderer.shadows`](#renderer-shadows) · [`scene.shapeOf()`](#scene-shapeof) · [`engine.skippedFrames`](#engine-skippedframes) · [`engine.renderer.skybox`](#renderer-skybox) · [`engine.renderer.softShadows`](#renderer-softshadows) · [`engine.debug.sphere()`](#debug-sphere) · [`engine.renderer.splatCull`](#renderer-splatcull) · [`scene.splatsOf()`](#scene-splatsof) · [`scene.spriteOf()`](#scene-spriteof) · [`spriteSheet()`](#spritesheet) · [`sRGB colours`](#view2d-colour) · [`srgbToLinear()`](#color-srgbtolinear) · [`benchmark.start()`](#benchmark-start) · [`engine.stats`](#engine-stats) · [`new StatsOverlay()`](#statsoverlay) · [`engine.stop()`](#engine-stop) · [`node.stop()`](#node-stop) · [`engine.renderer.post.strength`](#post-strength) · [`Winding.supported()`](#winding-supported) · [`orbit.syncFromCamera()`](#orbitcontroller-syncfromcamera) · [`scene.setTrail()`](#scene-settrail) · [`node.setOutline()`](#node-setoutline) · [`scene.setIK()`](#scene-setik) · [`scene.snapshot()`](#scene-snapshot)
 
-**T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof)
+**T** &nbsp; [`engine.renderer.taa`](#renderer-taa) · [`node.tint`](#node-tint) · [`scene.textOf()`](#scene-textof) · [`scene.time`](#scene-time) · [`engine.renderer.post.threshold`](#post-threshold) · [`scene.tileAt()`](#scene-tileat) · [`scene.tilemapOf()`](#scene-tilemapof) · [`scene.trailOf()`](#scene-trailof)
 
-**U** &nbsp; [`engine.unload()`](#engine-unload) · [`scene.update()`](#scene-update) · [`camera.update()`](#camera2d-update) · [`camera.update()`](#camera-update) · [`orbit.update()`](#orbitcontroller-update) · [`overlay.update()`](#statsoverlay-update)
+**U** &nbsp; [`engine.unload()`](#engine-unload) · [`scene.update()`](#scene-update) · [`camera.update()`](#camera2d-update) · [`camera.update()`](#camera-update) · [`orbit.update()`](#orbitcontroller-update) · [`overlay.update()`](#statsoverlay-update) · [`input.update()`](#input-update)
 
-**V** &nbsp; [`node.visible`](#node-visible) · [`vec3`](#math-vec3) · [`camera.view`](#camera2d-matrices)
+**V** &nbsp; [`node.visible`](#node-visible) · [`vec3`](#math-vec3) · [`camera.view`](#camera2d-matrices) · [`input.value()`](#input-value)
 
 **W** &nbsp; [`node.weights`](#node-weights) · [`camera.width`](#camera2d-size) · [`node.worldPosition()`](#node-worldposition) · [`node.worldRotation()`](#node-worldrotation) · [`camera.worldToScreen()`](#camera2d-worldtoscreen)
 
@@ -217,6 +217,7 @@ Loads a `.glb` or `.gltf` and returns a model that `scene.add()` takes. All the 
 | `retainGeometry` | `false` | Keep positions and indices (and skin weights and morph deltas) on the CPU, so `scene.raycast` hits triangles instead of bounding boxes. Costs about 12 bytes a vertex plus 4 an index for as long as the model lives. |
 | `baseURL` | the URL of `source` | What relative buffer and image URLs in a `.gltf` resolve against. Bytes without a `baseURL` cannot fetch anything. |
 | `fetch` | `globalThis.fetch` | Replaces `fetch` for every download: `source` when it is a URL, and the buffers and images the file names. Use it to refuse, rewrite or restrict URLs, above all from files you did not write. Every loader that downloads takes this option. |
+| `hook` | none | A [`SurfaceHook`](#engine-createsurfacehook) for every material of the model, or a function from a material's name to one or `null`, for some of them. |
 
 Returns: a model object: `{ nodes, roots, meshes, materials, materialIds, animations, skins, lights, cameras, textures, source, engine }`. Pass the whole object to `scene.add()`.
 Throws: `'load: <url> returned <status>'` for a failed download; `'load: this engine was destroyed'` if the engine is destroyed before or during the load; errors from the glTF parser (a malformed file, or one past the device's buffer limit). A failed load frees everything it had made.
@@ -265,6 +266,7 @@ A mesh made from arrays: terrain from a noise field, a map from a generator, a p
 | `roughness` | `1` | 0 is a mirror, 1 matte. |
 | `emissive` | `[0, 0, 0]` | Light it gives off, linear r, g, b, 0 or more. |
 | `doubleSided` | `false` | Draw and light both sides of each triangle. |
+| `hook` | none | A [`SurfaceHook`](#engine-createsurfacehook) the surface runs. |
 
 Returns: a model, as `engine.load` returns.
 
@@ -290,6 +292,47 @@ scene.add(await engine.createMesh({ positions, colors, indices }));
 ```
 
 Notes: the arrays are written into a glTF file and loaded, so a mesh made this way is what a loaded one is: shaded, culled, merged with others drawn alone, and its pipelines built before it is handed back. It is blended, with its own draw order, if its colour's alpha or any vertex's is below 1. The arrays are copied; changing them afterwards changes nothing, so to reshape a mesh make it again and unload the old one. After a lost GPU device it is rebuilt from that copy ([When the GPU is lost](#device-lost)).
+
+<a id="engine-createsurfacehook"></a>
+### `engine.createSurfaceHook(wgsl)` → `Promise<SurfaceHook>`
+
+Your own WGSL, run on a surface once its material is sampled and before it is lit: a dissolve, a shield's rim, a force field's ripple, a toon's flat colours, a texture scrolled by time. Give it to the materials of a model with [`load`](#engine-load)'s `hook` option, or to a mesh's with [`createMesh`](#engine-createmesh)'s `material.hook`.
+
+`wgsl` defines `fn surface(s : ptr<function, HookedSurface>)`, and any helpers it calls. It changes what it likes of the first six fields, or `discard`s the pixel; the rest are for it to read.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `baseColor` | `vec4<f32>` | Base colour and alpha, linear, with the node's tint and the vertex colour already in. On a `MASK` material the alpha is then tested against the cutoff. |
+| `emissive` | `vec3<f32>` | The material's own emission. The node's glow is added after. |
+| `normal` | `vec3<f32>` | World-space surface normal, normal map applied, facing the side seen. Normalized after the hook. |
+| `roughness` | `f32` | 0 to 1; clamped after. |
+| `metallic` | `f32` | 0 to 1; clamped after. |
+| `occlusion` | `f32` | The ambient light kept, 0 to 1. |
+| `position` | `vec3<f32>` | World position. |
+| `view` | `vec3<f32>` | Unit vector to the camera. |
+| `uv`, `uv1` | `vec2<f32>` | The two texture coordinate sets, as authored. |
+| `params` | `vec2<f32>` | The node's two numbers: [`node.setHookParams`](#node-sethookparams). |
+| `time` | `f32` | [`scene.time`](#scene-time), seconds. |
+
+Returns: a `SurfaceHook`, which this engine's loads accept.
+
+Throws: `'createSurfaceHook: the hook is WGSL, as a string'`; `'createSurfaceHook: the WGSL needs fn surface(s : ptr<function, HookedSurface>)'`; the WGSL compiler's message, with the line, when the hook does not compile; `RangeError` past 511 hooks.
+
+```js
+// Dissolve: holes grow from a noise pattern as params.x goes 0 to 1, edged with fire.
+const dissolve = await engine.createSurfaceHook(`
+  fn hash(p : vec3<f32>) -> f32 { return fract(sin(dot(p, vec3<f32>(12.9898, 78.233, 37.719))) * 43758.5453); }
+  fn surface(s : ptr<function, HookedSurface>) {
+    let n = hash(floor((*s).position * 20.0));
+    if (n < (*s).params.x) { discard; }
+    (*s).emissive += vec3<f32>(4.0, 1.2, 0.2) * step(n, (*s).params.x + 0.05) * step(0.001, (*s).params.x);
+  }`);
+const soldier = await engine.load('soldier.glb', { hook: dissolve });
+const unit = scene.add(soldier);
+unit.setHookParams(0.4);   // 40% gone
+```
+
+Notes: each hook is its own shader, so its own pipelines: a material with a hook never shares a draw with one without, and is never merged into a group (see [`stats.draws`](#engine-stats)). A hook that `discard`s turns off the early depth test for its draws, as `MASK` does. Shadows do not run the hook: what it cuts away still casts its whole shadow, and a `MASK` material casts by its texture's alpha. On an unlit material only `baseColor` and a `discard` count. The hook is kept with the engine's materials and built again after a lost GPU device. With [`engine.onDemand`](#engine-ondemand), a hook that animates with `time` moves only when a frame is drawn. Names the forward shader uses itself are taken: a helper named after one of them fails to compile, so give helpers your own prefix if in doubt.
 
 <a id="engine-loadtexture"></a>
 ### `engine.loadTexture(source, options)` → `Promise<Texture>`
@@ -594,6 +637,8 @@ Counts from the last frame drawn. Read only. The first five fields start at 0; t
 | `sprites2DWritten` | 2D | Of those, how many were re-uploaded. |
 | `tiles2DWritten` | 2D | Tile-map tiles re-uploaded. |
 | `emitters` | 2D | Particle emitters drawn in the 2D view. |
+| `trails` | 3D | Trails drawn. |
+| `outlined` | 3D | Meshes outlined ([`node.setOutline`](#node-setoutline)). |
 | `hudSprites` | HUD | Sprites and glyphs in the HUD. |
 | `hudSpritesWritten` | HUD | Of those, how many were re-uploaded. |
 | `splats` | 3D | Splats in the clouds drawn, before culling. |
@@ -790,6 +835,45 @@ engine.renderer.resolution = 0.75;
 ```
 
 Notes: only frames drawn to the canvas are scaled. A [target](#engine-createtarget) keeps the size it was made at. The HUD and the stats overlay are drawn at the canvas's full resolution, after scaling, so text stays crisp. [Debug lines](#debug-lines) are drawn into the 3D view, so they are scaled with it. Sprites sized in pixels keep their size on screen. The first time a lower resolution is set, the scaler builds in the background, and frames are stretched without sharpening until it is ready, as with [`ao`](#renderer-ao).
+
+<a id="renderer-dynamicresolution"></a>
+### `engine.renderer.dynamicResolution` → `object | null`
+
+Default `null`. Sets [`resolution`](#renderer-resolution) for you from how long the GPU takes over each frame, to keep it under `target`: down at once when a frame runs over, by about the square root of the overshoot (the cost of a frame goes mostly with its pixels); up a step of 0.05 only with a fifth of the target to spare, so it settles rather than bouncing between two. `true` takes the defaults.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `target` | `15` | Milliseconds of GPU time a frame. 15 leaves a 60 Hz display a little room; about 6 suits 144 Hz. |
+| `min` | `0.5` | The lowest resolution it goes to, 0.5 or more. |
+| `max` | `1` | The highest, at most 1. |
+
+Throws (on the next frame): `'dynamicResolution: true, { target, min, max }, or null to turn it off, …'`; `'dynamicResolution: target must be a positive number of milliseconds, …'`; `'dynamicResolution: min and max must be from 0.5 to 1, min at most max, …'`.
+
+```js
+engine.renderer.dynamicResolution = { target: 14, min: 0.6 };   // a Steam Deck holding 60
+```
+
+Notes: it reads the GPU's own timestamps, so it turns on [`gpuTiming`](#winding-create) while it runs and off again when set back to `null`, and does nothing on a device without `timestamp-query`. It moves at most once every 20 frames: the timestamps arrive a few frames late, and each new size makes the scaled view again. It cannot help a frame the CPU holds up; [`engine.stats`](#engine-stats) and a [Benchmark](#benchmark) tell which it is. Only frames drawn to the canvas are measured and scaled.
+
+<a id="renderer-motionblur"></a>
+### `engine.renderer.motionBlur` → `object | null`
+
+Default `null`. Smears each frame along how far each pixel moved since the last, as a camera's open shutter does: a car blurs as it passes, a plane's propeller, a sword's swing. Each opaque surface works out its own motion from last frame's draw data and joints, so an object moving past a still camera blurs and a still one beside it does not; the sky and everything still blur with the camera's own motion unless `camera` is `false`. `true` takes the defaults.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `strength` | `0.5` | How long the shutter stays open, as a share of the frame: 0.5 is film's 180 degrees, 1 smears the whole way from last frame. Above 0, at most 2. |
+| `samples` | `12` | Taps along each pixel's motion, 2 to 32. Fewer is cheaper and grainier. |
+| `camera` | `true` | Blur with the camera's own turning and moving. `false` blurs only what moves by itself, as many games do. |
+| `maxPixels` | `48` | The longest smear, in pixels. |
+
+Throws (on the next frame): `'motionBlur: true, { strength, samples, camera, maxPixels }, or null to turn it off, …'`; `'motionBlur: strength must be above 0 and at most 2, …'`; `'motionBlur: samples must be a whole number from 2 to 32, …'`; `'motionBlur: maxPixels must be a positive number, …'`.
+
+```js
+engine.renderer.motionBlur = { strength: 0.5, camera: false };   // vehicles and blades blur, the view stays crisp when it turns
+```
+
+Notes: canvas frames only. On, opaque surfaces write their motion beside their colour, and a pass after [TAA](#renderer-taa) and before depth of field and bloom averages along it: on Iris Xe at 1100x700 the pass took 0.2 ms, and writing the motion was too little to measure. Its pipelines are built the first time it is turned on, and frames are drawn without it until they are ready, as with [`ao`](#renderer-ao). Blended surfaces, particles, trails and sprites write no motion of their own; they blur with what is behind them. A morphed mesh blurs with its node and joints, not its morph targets. The frame after the scene grows past a capacity draws without object motion. How far things move a frame depends on the frame rate, so the same `strength` blurs less at 144 frames a second than at 30, as a real shutter does.
 
 <a id="renderer-fog"></a>
 ### `engine.renderer.fog` → `object | null`
@@ -1175,6 +1259,41 @@ scene.advance(clock.realDelta);
 engine.renderFrame(scene, camera);
 ```
 
+<a id="scene-time"></a>
+### `scene.time` → `number`
+
+Seconds [`scene.advance`](#scene-advance) has moved the scene on, from 0: the clock [surface hooks](#engine-createsurfacehook) read as `time`, so a paused game's effects pause with it. Writable: set it back to 0 to start over.
+
+Notes: hooks read it as a 32-bit float, which after about four hours of play counts in steps of a millisecond.
+
+<a id="scene-snapshot"></a>
+### `scene.snapshot(root)` → `object`
+
+The state of every node under `root`, or of the whole scene without one, as plain data that `JSON.stringify` keeps: for each node its position, rotation and scale, whether it is hidden, its own tint, glow, hook params and outline, and, for a model's root, what each layer of its animation is playing, how far in and how fast. For checkpoints, a replay, rewind, an editor's undo. Put back with [`restore`](#scene-restore).
+
+Returns: `{ version: 1, nodes: [{ path, position, rotation, scale, visible?, tint?, glow?, hookParams?, outline?, animation? }] }`. A node's `path` is the names from the root down, joined by `/`; a name its earlier siblings share gets `@1`, `@2` and on, and a node with no name is `#`. With a root, the root itself is the empty path.
+
+Throws: `'snapshot: the root node was removed'`.
+
+```js
+localStorage.setItem('checkpoint', JSON.stringify(scene.snapshot(level)));
+// Later, or after a reload that builds the level again:
+scene.restore(JSON.parse(localStorage.getItem('checkpoint')), level);
+```
+
+Notes: what a game keeps for itself -- health, inventory, the wave it is on -- is the game's to save; this is the scene's side of it. Lights', emitters', trails', decals' and IK's settings are not in it: they belong to the code that made them, which makes them again. The nodes' world matrices are not either, since they follow from the rest.
+
+<a id="scene-restore"></a>
+### `scene.restore(snapshot, root)` → `{ restored, missing }`
+
+Puts a [snapshot](#scene-snapshot) back: each node found by its path under `root` (the whole scene without one), and given what was recorded, all of it, so a tint since added is taken off again. Nodes not in the snapshot are left as they are. A node's animation layers are found by name; one this model has not made is made plain, so a game that masks its layers makes them before restoring, as it did the first time. Applied at once: the next `scene.update` composes it.
+
+Returns: how many nodes were restored, and the paths it could not find -- a model not loaded again, a node renamed.
+
+Throws: `'restore: not a snapshot scene.snapshot made (version 1)'`; `'restore: the root node was removed'`; and what the node setters throw for a value out of range.
+
+Notes: paths are by name and by the order nodes were made in, so a scene built again by the same code, loading the same models in the same order, finds every node. Adding or removing nodes elsewhere does not move a path; adding a sibling of the same name earlier than an existing one does.
+
 <a id="scene-bounds"></a>
 ### `scene.bounds(outMin, outMax)` → `boolean`
 
@@ -1388,6 +1507,48 @@ The tint [`setTint`](#node-settint) gave this node, `[1, 1, 1]` for none: its ow
 ### `node.glow` → `[r, g, b]`
 
 The glow [`setGlow`](#node-setglow) gave this node, `[0, 0, 0]` for none: its own, as `tint` is.
+
+<a id="node-setoutline"></a>
+### `node.setOutline(color, options)` → `Node`
+
+A line round every mesh under the node, in `color` (linear RGB, or RGBA for a see-through line; past 1 it glows), or `null` for none: a selected unit, a thing to pick up, an enemy under the cursor. Drawn in screen space round what is seen of it, so it holds on flat-shaded low-poly meshes, skinned and morphed ones included. The nearest outlined node above a mesh decides its look.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `width` | `2` | Pixels, from 0.5 to 8, at the canvas's resolution. |
+| `through` | `false` | Shown through whatever stands in front, as the whole outline of the meshes: a unit behind a wall. |
+
+Throws: `'setOutline: color must be 3 or 4 numbers, 0 or more, or null for none, …'`; `RangeError` `'setOutline: width must be from 0.5 to 8 pixels, …'`; `'setOutline: this node was removed'`.
+
+```js
+selected?.setOutline(null);
+selected = unit.setOutline([1.5, 1.2, 0.2], { width: 3 });
+```
+
+Notes: without outlines nothing is drawn or paid for. With any, each outlined mesh is drawn once more into a mask, a draw call apiece, and a pass over the screen rectangle they cover finds the edges; a wider line reads more of the mask for each of those pixels. Up to 255 different looks a frame. A mesh with levels of detail is outlined round all its levels at once. It is drawn before [TAA](#renderer-taa) and the post stack, so it is smoothed and tonemapped with the scene.
+
+<a id="node-outline"></a>
+### `node.outline` → `{ color, width, through } | null`
+
+The outline [`setOutline`](#node-setoutline) gave this node, or `null`: its own, not what it takes from above. A copy.
+
+<a id="node-sethookparams"></a>
+### `node.setHookParams(x, y = 0)` → `Node`
+
+Two numbers for a [surface hook](#engine-createsurfacehook) to read, as `params.x` and `params.y`, on every mesh under the node: how far a dissolve has got, when a shield was hit, which way a flag flies. A node without its own takes its parent's; `(0, 0)` is none. Stays in its batch, as a tint does, and costs nothing without a hook to read it.
+
+```js
+unit.setHookParams(dying ? (scene.time - diedAt) / 1.5 : 0);
+```
+
+Throws: `'setHookParams: x and y must be numbers from -65504 to 65504'`; `'setHookParams: this node was removed'`.
+
+Notes: kept as 16-bit floats, as tints are: about three significant figures.
+
+<a id="node-hookparams"></a>
+### `node.hookParams` → `[x, y]`
+
+The numbers [`setHookParams`](#node-sethookparams) gave this node, `[0, 0]` for none: its own, not its parent's. A copy.
 
 <a id="node-visible"></a>
 ### `node.visible` → `boolean`
@@ -1671,6 +1832,62 @@ face.weights[0] = 1;   // full smile
 
 Notes: the weights belong to the node that carries the mesh, which is often a child of the model's root, not the root itself. A clip that animates the weights overwrites what you write.
 
+<a id="inverse-kinematics"></a>
+## Inverse kinematics
+
+Bones turned to reach for a point or look at one, over whatever pose the animation gives them: feet on uneven ground, a hand on a door handle, a head following the player, a turret tracking its target. Solved in [`scene.update`](#scene-update), after the transforms are composed, in the order they were added; each composes what it turned before the next is solved, so skinning, bounds and shadows all see the result.
+
+Each frame starts from the pose underneath. A bone the animation or the app set this frame is solved from that; one still as the solve left it is solved from what it held before. So a `weight` of 0.5 stays half, and an IK whose target, pole, weight, pose and parent did not move costs nothing and moves nothing.
+
+<a id="scene-addik"></a>
+### `scene.addIK(options)` → `IK`
+
+Adds one. Two kinds:
+
+- `'twoBone'`: a limb of three nodes, `end` (the foot or the hand), its parent (the knee or elbow) and its parent's parent (the hip or shoulder), turned so `end` lands on `target`, solved exactly by the law of cosines. With a `pole`, the knee or elbow points toward it. Out of reach, the limb straightens toward the target.
+- `'aim'`: one node, `node`, turned so its own `axis` points at `target`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `type` | required | `'twoBone'` or `'aim'`. |
+| `target` | required | A node, followed wherever it goes, or a point in the world `[x, y, z]`. |
+| `weight` | `1` | How much of the solve to take, 0 to 1: blend it in and out, or ease a foot down. |
+| `end` | | `'twoBone'`: the last node of the limb. It needs a parent and a grandparent. |
+| `pole` | none | `'twoBone'`: a node or a point the middle joint bends toward. Without one, the limb bends in the plane it is already bent in. |
+| `node` | | `'aim'`: the node to turn. |
+| `axis` | `[0, 0, 1]` | `'aim'`: the direction, in the node's own space, to point at the target. glTF looks down +Z for a node; rigs vary, so check yours. |
+| `limit` | `Math.PI` | `'aim'`: the most it turns from the pose underneath, in radians: a neck that cannot look behind itself. |
+
+Returns: a handle, for [`setIK`](#scene-setik) and [`removeIK`](#scene-removeik).
+
+Throws (all start `addIK:`): `type` not one of the two; `target` missing, or not a node or 3 finite numbers (and the same of `pole` and `axis`); `weight` outside 0 to 1 (`RangeError`); `end` not a live node with a parent and a grandparent; `node` not a live node; `axis` zero; `limit` outside 0 to pi (`RangeError`).
+
+```js
+// A foot on whatever is under it, the knee pointing forward.
+const foot = soldier.find('Foot_L');
+const ik = scene.addIK({ type: 'twoBone', end: foot, target: foot.worldPosition([0, 0, 0]), pole: kneeGuide });
+// Each frame: the ground under the foot.
+const hit = scene.raycast(above(foot), [0, -1, 0]);
+if (hit) scene.setIK(ik, { target: groundPoint(hit), weight: 1 });
+
+// A turret following its target, but no more than 60 degrees off its mount.
+scene.addIK({ type: 'aim', node: turret.find('Barrel'), target: enemy, limit: Math.PI / 3 });
+```
+
+Notes: an IK whose nodes are removed is dropped. A bone moved by more than one IK takes the last one's turn on top of the earlier ones'. Bones are turned, never stretched or moved, and a two-bone limb's middle joint is free to bend either way: the pole, or the bend the pose already has, chooses.
+
+<a id="scene-setik"></a>
+### `scene.setIK(ik, changes)`
+
+Changes an IK's options: the same names `addIK` takes. A new target each frame goes here; one given as a node needs no call at all.
+
+Throws: `'setIK: not an IK of this scene: addIK makes one, removeIK ends it'`, and what `addIK` throws for a bad value, starting `setIK:`.
+
+<a id="scene-removeik"></a>
+### `scene.removeIK(ik)`
+
+Ends an IK. Its bones go back to the pose under it, unless something else has set them since. Removing one twice does nothing.
+
 <a id="lights"></a>
 ## Lights
 
@@ -1710,7 +1927,7 @@ Notes:
 - Passing `direction` without `type` makes a spot. For a directional light, say `type: 'directional'`.
 - Shadows are drawn from a closed mesh's back faces, which keeps its lit faces free of acne. A mesh with an open edge -- a plane, a roof of one sheet -- is drawn whole, so it casts whichever side faces the light, as a double-sided material does.
 - Soft shadows: a light with a `size` casts percentage-closer soft shadows (PCSS). Its penumbra widens with the gap between the caster and where the shadow falls, as a real light's does: sharp where a chair leg meets the floor, soft under a table top. The width is capped at 64 shadow-map texels, and the edge is a fine per-pixel grain, not bands. [`renderer.softShadows`](#renderer-softshadows) turns it off for every light at once. It costs only while some light that casts has a size: the scene's shaders are built a second way, with it compiled in, the first time one does, and frames show the plain edge until they are ready. It is not cheap: on integrated graphics (Intel Iris Xe), a sun the sun's size took Sponza's forward pass at 1280x720 from 5.7 to 8.8 ms, most of it 8 depth reads and 12 filtered taps for every pixel it lights.
-- Shadows, by type: a directional light gets up to four cascaded shadow maps that follow the camera. A spot gets one shadow view down its cone, or six (like a point light) when `outerAngle` is wider than 45 degrees. A point light gets six, one per cube face. A point or spot light draws no shadow maps while its radius sphere is off screen. Maps are redrawn only when something within the light's reach moves.
+- Shadows, by type: a directional light gets up to four cascaded shadow maps that follow the camera. A spot gets one shadow view down its cone, or six (like a point light) when `outerAngle` is wider than 45 degrees. A point light gets six, one per cube face. A point or spot light draws no shadow maps while its radius sphere is off screen. Maps are redrawn only when something within the light's reach moves. Point and spot maps are 16-bit depth; a caster nearer the light than 1/64 of its radius casts no shadow.
 - 2D: through a `Camera2D`, point and spot lights also light every sprite, shape, path, text or tilemap made with `lit: true`, fading to nothing at `radius` (in the view's units). Give `position: [x, y]` and, for a spot, `direction: [x, y]`. Directional lights and shadows do not apply in 2D. Where no light reaches, the camera's `ambient` lights it.
 
   ```js
@@ -1822,6 +2039,62 @@ scene.burst(puff, 50);
 ### `scene.particlesActive` → `boolean`
 
 Whether a particle may still be alive, or one is about to be born.
+
+<a id="trails"></a>
+## Trails
+
+A ribbon behind a moving node: a sword's swing, a shell's streak, a plane's contrail, a car's light trail. The node is sampled each frame once the scene's transforms are composed, and each point lasts `lifetime` seconds of [`scene.time`](#scene-time), so [`engine.run`](#engine-run) (or [`scene.advance`](#scene-advance)) ages them. Drawn as a strip facing the camera, smoothed through the points so a fast swing at 60 frames a second curves rather than breaking into straight cuts. 3D only.
+
+<a id="scene-addtrail"></a>
+### `scene.addTrail(options)` → `Node`
+
+Adds a trail as a node, and returns it: parent it to what leaves the trail (a bone, a muzzle, a wing tip), or move it yourself.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `width` | required | Width at the head, in world units. |
+| `widthEnd` | `width` | Width at the tail, where a point is `lifetime` old. |
+| `lifetime` | required | Seconds a point of the trail lasts: how long the trail is, in time. Above 0. |
+| `color` | `[1, 1, 1, 1]` | At the head. Linear, and may exceed 1 to glow. |
+| `colorEnd` | `color` | At the tail. An alpha of 0 fades it out. |
+| `texture` | `null` | From [`engine.loadTexture`](#engine-loadtexture): u runs head (0) to tail (1), v across. Without one, soft at the edges. |
+| `blend` | `'additive'` | `'additive'` or `'alpha'`; alpha trails are drawn far to near by their heads. |
+| `emitting` | `true` | `false` stops adding points: what is there fades as it ages. |
+| `position` | `[0, 0, 0]` | In the parent's space. |
+| `parent` | `null` | Node to attach it to. |
+
+Returns: the trail's Node.
+
+Throws (all start `addTrail:`): `width` missing, or `width` or `widthEnd` negative or not a number; `lifetime` not a positive number; `color` or `colorEnd` not 4 numbers, 0 or more; `texture` not from `engine.loadTexture`; `blend` not `'additive'` or `'alpha'`.
+
+```js
+// A blade's swing: wide and hot at the edge, gone in a third of a second.
+const edge = scene.addTrail({
+  parent: sword.find('Tip'), width: 0.4, widthEnd: 0, lifetime: 0.3,
+  color: [3, 1.5, 0.5, 1], colorEnd: [1, 0.2, 0.05, 0],
+});
+```
+
+Notes: a trail keeps its last 256 points, one a frame while its node moves and none while it stands still, so a stopped trail shrinks to nothing. A hidden one keeps none and draws nothing, so it does not streak from where it was hidden to where it is shown. Each trail is one draw call, its strip built on the CPU each frame: about 40 bytes for each of 8 vertices a frame of its length.
+
+<a id="scene-settrail"></a>
+### `scene.setTrail(node, changes)`
+
+Changes a trail's options: the same names `addTrail` takes, less `position` and `parent`. What it has drawn stays and takes the new look.
+
+Throws: `'setTrail: this node has no trail'`, and what `addTrail` throws for a bad value, starting `setTrail:`.
+
+<a id="scene-cleartrail"></a>
+### `scene.clearTrail(node)`
+
+Drops everything a trail has drawn, at once: for a node moved somewhere new, such as a pooled shell fired again or a respawned player, which would otherwise streak from where it was.
+
+Throws: `'clearTrail: this node has no trail'`.
+
+<a id="scene-trailof"></a>
+### `scene.trailOf(node)` → `object | null`
+
+The node's trail options, or `null` if it has none. A copy: change them with [`setTrail`](#scene-settrail).
 
 <a id="splats"></a>
 ## Gaussian splats
@@ -2628,6 +2901,83 @@ Notes:
 - Node transforms are brought up to date first, so a node moved since the last frame is hit where it is now.
 - Emitters are never hit.
 - With a 3D camera, `scene.pick` casts a ray instead; see [`scene.pick`](#scene-pick).
+
+<a id="input"></a>
+## Input
+
+Keyboard, mouse and gamepads, read by name each frame rather than handled as events: is jump held, was it pressed since the last step, how far is the stick over. Names are one namespace:
+
+- keys by [`KeyboardEvent.code`](https://developer.mozilla.org/docs/Web/API/KeyboardEvent/code): `'KeyW'`, `'Space'`, `'ShiftLeft'`, `'ArrowUp'`, so a key stays where it is on any layout;
+- mouse buttons: `'MouseLeft'`, `'MouseRight'`, `'MouseMiddle'`;
+- gamepad buttons, in the standard mapping (an Xbox pad, a PlayStation one, a Steam Deck through Steam Input): `'PadA'`, `'PadB'`, `'PadX'`, `'PadY'`, `'PadLB'`, `'PadRB'`, `'PadLT'`, `'PadRT'`, `'PadBack'`, `'PadStart'`, `'PadLS'`, `'PadRS'`, `'PadUp'`, `'PadDown'`, `'PadLeft'`, `'PadRight'`, `'PadHome'`; and the sticks' axes, `'PadLeftX'`, `'PadLeftY'`, `'PadRightX'`, `'PadRightY'` (y down). A pad with no standard mapping has `'PadButton0'` up and `'PadAxis0'` up.
+
+<a id="engine-input"></a>
+### `engine.input` → `Input`
+
+The engine's input, made the first time it is asked for: keys from the window, so the canvas need not have focus; the mouse measured against the canvas. [`engine.run`](#engine-run) keeps it up to date: the gamepads are read at the start of each frame, and each press and release is seen by one fixed `update` step, so a press is neither lost in a frame that runs no step nor counted twice in one that runs two. Driving frames with [`renderFrame`](#engine-renderframe), call [`input.update()`](#input-update) once a frame yourself.
+
+```js
+const input = engine.input;
+input.bind('jump', ['Space', 'PadA']);
+input.bind('moveX', { negative: ['KeyA', 'ArrowLeft'], positive: ['KeyD', 'ArrowRight'], axis: 'PadLeftX' });
+engine.run(scene, camera, {
+  update(dt) {
+    player.x += input.value('moveX') * speed * dt;
+    if (input.pressed('jump') && player.grounded) player.jump();
+  },
+});
+```
+
+Throws: `'input: this engine was destroyed'`.
+
+<a id="input-bind"></a>
+### `input.bind(action, sources)` → `Input`
+
+An action: a name for several inputs together, then read as one with the calls below. Buttons, as a list: held when any is. An axis, from -1 to 1, as `{ negative, positive, axis }`: the keys or buttons that push it each way, and a stick's axis, summed and clamped. Binding a name again replaces it.
+
+Throws: `'bind: … needs a list of names, or { negative, positive, axis }'`.
+
+<a id="input-down"></a>
+### `input.down(name, pad)` → `boolean`
+
+Whether a key, button or action is held. `pad`, a gamepad's index, asks that one alone, for players on their own pads; without it, any. An axis action is held when pushed past half.
+
+<a id="input-pressed"></a>
+### `input.pressed(name, pad)` → `boolean`
+
+Whether it went down since the last fixed step, under `engine.run`, or since the last `update()`. A key held down repeats nothing here: only the first press.
+
+<a id="input-released"></a>
+### `input.released(name, pad)` → `boolean`
+
+Whether it came up since the last step, as `pressed`. A key held when the window loses focus is released then, so none is left stuck down.
+
+<a id="input-value"></a>
+### `input.value(name, pad)` → `number`
+
+How far: 0 or 1 for a key or a mouse button, 0 to 1 for a trigger, -1 to 1 for a stick's axis or an axis action. A stick inside `input.deadZone` (0.15 by default) reads 0, measured round the stick rather than per axis, and past it starts again from 0, so there is no jump at its edge.
+
+<a id="input-mouse"></a>
+### `input.mouse` → `{ x, y, dx, dy, wheel }`
+
+The mouse: where it is over the canvas, in CSS pixels from its top left, and how far it moved and the wheel turned since the last step. `dx` and `dy` keep counting with the pointer locked.
+
+<a id="input-pads"></a>
+### `input.pads` → `{ index, id, standard }[]`
+
+The gamepads connected. A browser lists a gamepad only once a button on it has been pressed.
+
+<a id="input-lockpointer"></a>
+### `input.lockPointer()` and `input.locked`
+
+Capture the mouse, for a camera turned by it: the pointer is hidden and `mouse.dx` and `dy` go on past the screen's edge. Call it from a click or a key press; the browser refuses otherwise. Escape lets it go. `locked` says whether it is captured.
+
+<a id="input-update"></a>
+### `input.update()`
+
+Start a frame, in a loop of your own: forget last frame's presses, releases and mouse movement, and read the gamepads. Not needed under [`engine.run`](#engine-run), which does it a step at a time.
+
+Notes: `new Input({ keys, pointer, pads, deadZone })` makes one apart from the engine's, for a page with no engine or a second canvas; `input.destroy()` stops it listening. Nothing calls `preventDefault`: a game that wants Space not to scroll the page, or the right button not to open a menu, says so on its own listeners.
 
 <a id="orbitcontroller"></a>
 ## OrbitController

@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-13
+
+**What a game needs, in the engine.** Surface hooks put your own WGSL on a material; trails, outlines
+and motion blur; inverse kinematics for limbs and heads; keyboard, mouse and gamepad input read by
+name; scene snapshots for checkpoints and rewind; and a resolution that adapts to hold a frame time.
+Also cheaper: point and spot shadow maps are 16-bit (the harness's dungeon 3.1 -> 2.3 ms of point
+shadows on Iris Xe), draw data is 96 bytes a renderable instead of 128, and a still morphed mesh no
+longer costs a moving one's frame.
+
+### Added
+
+- **Surface hooks: your own WGSL on a material's surface.** `engine.createSurfaceHook(wgsl)` compiles
+  a `fn surface(s : ptr<function, HookedSurface>)` into the forward shader, run once a material is
+  sampled and before it is lit. It can change the base colour and alpha, the emission, the normal,
+  roughness, metallic and occlusion, or discard the pixel, reading the world position, the view, both
+  UV sets, the scene's time and two numbers from its node. Give it to a model's materials with
+  `load(source, { hook })` (or by material name), or to a mesh with `createMesh`'s `material.hook`.
+  A mistake in the WGSL throws from `createSurfaceHook`, with the compiler's message.
+- **`node.setHookParams(x, y)` and `node.hookParams`**: those two numbers, which come down the
+  hierarchy from the nearest node that set them. They ride in the draw data's last free word, so
+  setting them keeps the node in its batch.
+- **`scene.time`**: the seconds `scene.advance` has moved the scene on, the clock hooks read.
+- **`scene.snapshot(root)` and `scene.restore(snapshot, root)`: the scene's state as JSON-ready
+  data**, and back. Every node under a root by its path of names: position, rotation, scale,
+  visibility, tint, glow, hook params, outline, and what its model's animation layers are playing and
+  where. For checkpoints, replays, rewind and undo; a scene built again by the same code finds every
+  node. `restore` reports what it could not find.
+- **`engine.input`: keyboard, mouse and gamepads, read by name.** `down`, `pressed`, `released` and
+  `value` for keys (`KeyboardEvent.code`), mouse buttons and standard-mapping gamepad buttons and sticks
+  (`'PadA'`, `'PadLeftX'`), one pad or any; actions with `bind`, buttons or a -1 to 1 axis from keys and
+  a stick; a radial dead zone; the mouse's position, movement and wheel, and pointer lock. Under
+  `engine.run` each press is seen by exactly one fixed step. Keys held when focus is lost are let go.
+  `Input` is exported for a page of its own.
+- **`engine.renderer.motionBlur`: each frame smeared along how far each pixel moved**, as an open
+  shutter smears it. Opaque surfaces write their own motion, from last frame's draw data and joints
+  (copied on the GPU at the end of each frame), so what moves past a still camera blurs and what is
+  still does not; the sky moves with the camera alone. `{ strength, samples, camera, maxPixels }`;
+  `camera: false` leaves the camera's own motion out. One pass after TAA: 0.2 ms at 1100x700 on Iris
+  Xe, and writing the motion was within noise, measured alternating in one page.
+- **`engine.renderer.dynamicResolution`: the resolution set to hold a GPU frame time.** `true` or
+  `{ target, min, max }` (15 ms, 0.5 and 1 by default). From the GPU's timestamps, every 20 frames:
+  down at once by about the square root of the overshoot, up a step of 0.05 only with a fifth of the
+  target to spare, so it settles. Does nothing without `timestamp-query`.
+- **`node.setOutline(color, { width, through })`: a line round every mesh under a node**, for a
+  selected unit or a thing to pick up. Screen space, so it holds on flat-shaded low-poly meshes
+  (skinned and morphed too): each outlined mesh drawn into a mask, then one pass over the rectangle
+  they cover finds the edges and fades the last half pixel. `through` shows the whole outline through
+  what is in front. Nothing is drawn without outlines. `node.outline` reads it back;
+  `engine.stats.outlined` counts the meshes.
+- **Inverse kinematics: `scene.addIK(options)`**, with `setIK` and `removeIK`. `'twoBone'`: a limb
+  turned so its end lands on a target, solved exactly by the law of cosines, its middle joint bending
+  toward an optional pole, straightening toward a target out of reach. `'aim'`: a bone turned so an
+  axis of its own points at a target, within a `limit`. Targets and poles are points or nodes, which
+  are followed. Solved at `scene.update` over whatever the animation posed, each starting from the
+  pose underneath, so a `weight` below 1 holds and an IK with nothing new to do moves nothing.
+- **Trails: `scene.addTrail(options)`**, a ribbon behind a moving node: a sword's swing, a shell's
+  streak, a contrail. Width and colour from head to tail (`widthEnd`, `colorEnd`), a texture or a
+  soft edge, additive or alpha, `emitting` to stop adding to it. Sampled once a frame where its node
+  is, aged by `scene.time`, and drawn as a strip facing the camera, Catmull-Rom smoothed so a swing at
+  60 frames a second is an arc. With `setTrail`, `clearTrail` (for a pooled shell fired again) and
+  `trailOf`, and `engine.stats.trails`.
+
+### Changed
+
+- **Point and spot shadow maps are 16-bit depth**, half the bytes to clear and write. The harness's
+  dungeon (36 torches, 83 shadow faces drawn a frame) on Iris Xe: 2.3 ms of point shadows a frame
+  instead of 3.1, over four alternating runs each. Precision is unchanged in practice: the near plane
+  moved from 1/1024 of the light's radius to 1/64, which keeps a depth step at the edge of its reach
+  to a thousandth of the radius. So a caster within 1/64 of the radius of the light (19 cm for a
+  12 m torch) no longer casts.
+- **A renderable's draw data is 96 bytes, not 128.** The normal matrix is no longer built on the CPU
+  and uploaded with every moved renderable: the vertex shader makes it from the model matrix, a few
+  cross products. The harness's horde (9,000 renderables) on Iris Xe uploads 901 KB a frame instead
+  of 1,201, its draw data stage takes 1.0 ms instead of 1.1, and the GPU frame doesn't change.
+
+### Fixed
+
+- **More than 32 material pipelines no longer reorder blending.** The blended draws' sort key has 5
+  bits for the pipeline, and a 33rd pipeline id spilled into the depth bits. Not reachable before
+  surface hooks, which add pipelines; the id now wraps within its own field, as the opaque key's does,
+  where it only groups draws.
+- **A still morphed mesh, or a still character both skinned and morphed, no longer costs a moving
+  one's frame.** Any morph weight not exact in single precision (0.3, say), or a face on a skinned
+  character, made its renderable count as moved every frame: the scene's bounds, its draw data
+  upload and the shadow casters' boxes were all redone for it. Now nothing is, until it moves.
+
 ## [1.10.0] - 2026-11-12
 
 **Compressed textures, with no dependency.** KTX2 images (`KHR_texture_basisu`), in both of Basis
@@ -2716,7 +2802,8 @@ First public release.
 - 261 checks under Node, plus a browser suite that boots the engine on a real
   device and verifies what WGSL cannot be verified without one.
 
-[Unreleased]: https://github.com/getlowarc/winding/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/getlowarc/winding/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/getlowarc/winding/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/getlowarc/winding/compare/v1.9.2...v1.10.0
 [1.9.2]: https://github.com/getlowarc/winding/compare/v1.9.1...v1.9.2
 [1.9.1]: https://github.com/getlowarc/winding/compare/v1.9.0...v1.9.1

@@ -27,7 +27,7 @@ import { parseHDR } from '../render/hdr.js';
 import { Renderer, RenderTarget } from '../render/renderer.js';
 import { Splats } from '../render/splats.js';
 import { openSurface } from '../render/shadows.js';
-import { ALPHA_OPAQUE } from '../render/material.js';
+import { ALPHA_OPAQUE, SurfaceHook } from '../render/material.js';
 import { chunkBoxes } from '../scene/bounds.js';
 import { readSplats } from '../scene/splats.js';
 import { GLTFTextures, ktx2Texture } from '../render/textures.js';
@@ -49,6 +49,7 @@ import { boundsRange, drawDataRange } from '../scene/renderableJob.js';
 import { sharedMemoryAvailable } from '../core/shared.js';
 import { TAA_SETTLE } from '../render/taa.js';
 import { checkOptions } from '../core/options.js';
+import { Input } from './input.js';
 
 
 /**
@@ -109,7 +110,7 @@ const ktx2Worker = () => createModuleWorker(new URL('../scene/gltf/ktx2Worker.js
  * device: every live setting a frame reads (Winding._settings lists the same).
  */
 function carrySettings(from, to) {
-  for (const key of ['exposure', 'autoExposure', 'softShadows', 'taa', 'splatCull', 'resolution', 'fog', 'dof',
+  for (const key of ['exposure', 'autoExposure', 'softShadows', 'taa', 'splatCull', 'resolution', 'dynamicResolution', 'motionBlur', 'fog', 'dof',
     'skybox', 'shadowDistance', 'lightDistance', 'ao', 'oit', 'profiler']) to[key] = from[key];
   to.debug.depthTest = from.debug.depthTest;
   for (const key of ['threshold', 'knee', 'filterRadius', 'strength', 'levels', 'antialias', 'grading']) to.post[key] = from.post[key];
@@ -385,6 +386,26 @@ export class Winding {
   }
 
   /**
+   * WGSL run on a surface once its material is sampled, before it is lit:
+   * `fn surface(s : ptr<function, HookedSurface>)`, changing what it likes
+   * of the colour, emission, normal, roughness, metallic and occlusion, or
+   * discarding. For the materials of a load({ hook }) or a createMesh
+   * material's hook. Compiled here, so a mistake throws here, with the
+   * compiler's message. See docs/API.md for HookedSurface.
+   */
+  async createSurfaceHook(wgsl) {
+    this._assertAlive('createSurfaceHook');
+    if (typeof wgsl !== 'string') throw new TypeError('createSurfaceHook: the hook is WGSL, as a string');
+    if (!/\bfn\s+surface\s*\(/.test(wgsl)) {
+      throw new Error('createSurfaceHook: the WGSL needs fn surface(s : ptr<function, HookedSurface>)');
+    }
+    const hook = this.renderer.materials.addHook(wgsl);
+    await this.renderer.hookShader(hook.index, false);
+    this._assertAlive('createSurfaceHook');
+    return hook;
+  }
+
+  /**
    * A font for scene.addText: any CSS font the page can use, rasterised as a
    * distance field at the size it names. Waits for a web font to load.
    *
@@ -640,6 +661,7 @@ export class Winding {
       }
       model.materials.forEach((material, m) => {
         const registry = this.renderer.materials;
+        if (options.hook !== undefined && into === null) material.hook = this._hookFor(options.hook, material) ?? undefined;
         const bound = textures.texturesFor(material);
         asset.materialIds.push(animated.has(m) ? registry.register(material, bound) : registry.share(material, bound));
       });
@@ -792,7 +814,18 @@ export class Winding {
     this._assertAlive('createMesh');
     checkOptions('createMesh', options);
     checkOptions('createMesh', options.material, 'material.', 'createMesh material');
-    return this.load(meshGLB(options));
+    const hook = options.material?.hook;
+    return this.load(meshGLB(options), hook === undefined ? {} : { hook });
+  }
+
+  /** load()'s `hook` for one material: a hook, or a function of the material's name giving one or null. */
+  _hookFor(option, material) {
+    const hook = typeof option === 'function' ? option(material.name ?? '') : option;
+    if (hook === null || hook === undefined) return null;
+    if (!(hook instanceof SurfaceHook) || this.renderer.materials.hooks[hook.index] !== hook) {
+      throw new TypeError('load: hook must be what this engine\'s createSurfaceHook returned');
+    }
+    return hook;
   }
 
   /** glTF lets a primitive have no material; the spec's default is a white dielectric. */
@@ -921,10 +954,21 @@ export class Winding {
       // pause menu still moves.
       scene.advance(this.clock.delta);
       hud?.scene.advance(this.clock.realDelta);
-      if (update) while (this.clock.step()) update(this.clock.fixedDt, this.clock.elapsed);
-      else this.clock.accumulator = 0;   // nothing to simulate; do not let it grow
+      // Input: the gamepads read, and each press handed to one fixed step --
+      // kept for the next frame when this one runs none, never seen twice when it runs two.
+      const input = this._input;
+      input?.poll();
+      if (update) {
+        while (this.clock.step()) {
+          update(this.clock.fixedDt, this.clock.elapsed);
+          input?.consume();
+        }
+      } else {
+        this.clock.accumulator = 0;   // nothing to simulate; do not let it grow
+      }
 
       if (frame) frame(this.clock.alpha, this.clock);
+      if (!update) input?.consume();
       // update() or frame() may have stopped the loop, or destroyed the engine.
       if (!this._running) return;
       const idle = this.onDemand && this._idle(scene, camera, hud);
@@ -1094,7 +1138,7 @@ export class Winding {
   _settings() {
     const r = this.renderer, p = r.post;
     return settingsSignature([
-      r.exposure, r.autoExposure, r.softShadows, r.taa, r.splatCull, r.resolution, r.fog, r.dof, r.skybox, r.shadowDistance, r.lightDistance, r.ao, r.oit, r.debug.depthTest,
+      r.exposure, r.autoExposure, r.softShadows, r.taa, r.splatCull, r.resolution, r.dynamicResolution, r.motionBlur, r.fog, r.dof, r.skybox, r.shadowDistance, r.lightDistance, r.ao, r.oit, r.debug.depthTest,
       p.threshold, p.knee, p.filterRadius, p.strength, p.levels, p.antialias, p.grading,
       // The shadow settings a frame reads; the rest are fixed at creation.
       r.shadows.lambda, r.shadows.casterExtent, r.shadows.normalBias,
@@ -1332,9 +1376,20 @@ export class Winding {
    * The environment is destroyed only if this engine made it -- its default
    * sky. One from loadEnvironment is the caller's, freed with unload.
    */
+  /**
+   * Keyboard, mouse and gamepads, read by name (see app/input.js): made the
+   * first time it is asked for, listening to the window for keys and to the
+   * canvas for the mouse. engine.run keeps it up to date.
+   */
+  get input() {
+    this._assertAlive('input');
+    return (this._input ??= new Input({ keys: globalThis, pointer: this.gpu.canvas ?? null }));
+  }
+
   destroy() {
     if (this._destroyed) return;   // the loop may already have done it
     this._destroyed = true;
+    this._input?.destroy();
     this.stop();
     this.jobs.destroy();
     this.renderer.destroy();

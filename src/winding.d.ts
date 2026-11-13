@@ -130,7 +130,32 @@ export interface MeshOptions {
   uvs?: ArrayLike<number>;
   /** r, g, b or r, g, b, a for each vertex, linear, 0 to 1. */
   colors?: ArrayLike<number>;
-  material?: { color?: Vec4; metallic?: number; roughness?: number; emissive?: Vec3; doubleSided?: boolean };
+  material?: { color?: Vec4; metallic?: number; roughness?: number; emissive?: Vec3; doubleSided?: boolean; hook?: SurfaceHook };
+}
+
+export type IKOptions =
+  | { type: 'twoBone'; end: Node; target: Node | Vec3; pole?: Node | Vec3 | null; weight?: number }
+  | { type: 'aim'; node: Node; target: Node | Vec3; axis?: Vec3; limit?: number; weight?: number };
+
+export interface SceneSnapshot {
+  version: 1;
+  nodes: {
+    path: string; position: number[]; rotation: number[]; scale: number[]; visible?: false;
+    tint?: number[]; glow?: number[]; hookParams?: number[];
+    outline?: { color: number[]; width: number; through: boolean };
+    animation?: unknown;
+  }[];
+}
+
+/** A handle from scene.addIK. */
+export interface IK {
+  readonly type: 'twoBone' | 'aim';
+}
+
+/** WGSL a material runs on its surface before it is lit: engine.createSurfaceHook. */
+export interface SurfaceHook {
+  readonly source: string;
+  readonly index: number;
 }
 
 export interface DeviceLost {
@@ -234,6 +259,10 @@ export interface Stats {
   readonly sprites2DWritten?: number;
   readonly tiles2DWritten?: number;
   readonly emitters?: number;
+  /** Trails drawn (3D). */
+  readonly trails?: number;
+  /** Meshes outlined (3D). */
+  readonly outlined?: number;
   readonly hudSprites?: number;
   readonly hudSpritesWritten?: number;
   readonly splats?: number;
@@ -277,6 +306,10 @@ export interface Renderer {
   exposure: number;
   autoExposure: AutoExposure | boolean | null;
   resolution: number;
+  /** Resolution set to hold a GPU frame time; see docs/API.md. */
+  dynamicResolution: { target?: number; min?: number; max?: number } | boolean | null;
+  /** Each frame smeared along how far each pixel moved; see docs/API.md. */
+  motionBlur: { strength?: number; samples?: number; camera?: boolean; maxPixels?: number } | boolean | null;
   fog: Fog | null;
   dof: DepthOfField | null;
   ao: { radius: number | null } | null;
@@ -323,6 +356,8 @@ export class Winding {
   readonly renderer: Renderer;
   readonly environment: Environment;
   readonly clock: Clock;
+  /** Keyboard, mouse and gamepads, read by name: see docs/API.md. */
+  readonly input: Input;
   readonly fps: number;
   readonly skippedFrames: number;
   onDemand: boolean;
@@ -335,7 +370,13 @@ export class Winding {
   set rhi(value: never);
 
   createScene(options?: CreateSceneOptions): Scene;
-  load(source: string | ArrayBuffer | Uint8Array, options?: { retainGeometry?: boolean; baseURL?: string; fetch?: Fetch }): Promise<Model>;
+  load(source: string | ArrayBuffer | Uint8Array, options?: {
+    retainGeometry?: boolean; baseURL?: string; fetch?: Fetch;
+    /** For every material, or by material name. */
+    hook?: SurfaceHook | ((materialName: string) => SurfaceHook | null);
+  }): Promise<Model>;
+  /** WGSL defining fn surface(s : ptr<function, HookedSurface>); see docs/API.md. */
+  createSurfaceHook(wgsl: string): Promise<SurfaceHook>;
   /** A mesh made from arrays: terrain, a generated map, a prop built in code. */
   createMesh(options: MeshOptions): Promise<Model>;
   loadTexture(source: string | ImageBitmapSource, options?: { srgb?: boolean; pixelated?: boolean; label?: string; fetch?: Fetch }): Promise<Texture>;
@@ -417,6 +458,18 @@ export interface EmitterOptions extends Placed {
   texture?: Texture | null;
   blend?: 'additive' | 'alpha';
   layer?: number;
+}
+
+export interface TrailOptions extends Placed {
+  width: number;
+  widthEnd?: number;
+  /** Seconds a point of the trail lasts. */
+  lifetime: number;
+  color?: Color;
+  colorEnd?: Color;
+  texture?: Texture | null;
+  blend?: 'additive' | 'alpha';
+  emitting?: boolean;
 }
 
 export interface DecalOptions extends Placed {
@@ -538,6 +591,16 @@ export class Scene {
   remove(node: Node): void;
   update(): number;
   advance(dt: number): void;
+  /** Every node's state under root, as JSON-ready data: see docs/API.md. */
+  snapshot(root?: Node | null): SceneSnapshot;
+  /** Put a snapshot back, by path. */
+  restore(snapshot: SceneSnapshot, root?: Node | null): { restored: number; missing: string[] };
+  /** A limb reaching for a point, or a bone turned to look at one: see docs/API.md. */
+  addIK(options: IKOptions): IK;
+  setIK(ik: IK, changes: Partial<IKOptions>): void;
+  removeIK(ik: IK): void;
+  /** Seconds advance() has moved the scene on: the clock surface hooks read. */
+  time: number;
   bounds(outMin: Vec3, outMax: Vec3): boolean;
   frame(camera: Camera, options?: FrameOptions): boolean;
   raycast(origin: Vec3, direction: Vec3, options?: { maxDistance?: number }): Hit | null;
@@ -552,6 +615,12 @@ export class Scene {
   setEmitter(node: Node, changes: Changes<EmitterOptions>): void;
   emitterOf(node: Node): Omit<EmitterOptions, 'position' | 'parent'> | null;
   burst(node: Node, count: number): void;
+  /** A ribbon behind a moving node. */
+  addTrail(options: TrailOptions): Node;
+  setTrail(node: Node, changes: Changes<TrailOptions>): void;
+  /** Drop what a trail has drawn: a pooled shell fired again, a respawn. */
+  clearTrail(node: Node): void;
+  trailOf(node: Node): Omit<TrailOptions, 'position' | 'parent'> | null;
 
   addSplats(options: { splats: Splats } & Placed): Node;
   splatsOf(node: Node): { splats: Splats } | null;
@@ -650,6 +719,12 @@ export class Node {
   setGlow(color: ArrayLike<number>): this;
   readonly tint: [number, number, number];
   readonly glow: [number, number, number];
+  /** A line round every mesh under this node, or null for none. */
+  setOutline(color: ArrayLike<number> | null, options?: { width?: number; through?: boolean }): this;
+  readonly outline: { color: number[]; width: number; through: boolean } | null;
+  /** Two numbers for a surface hook: params.x and params.y. */
+  setHookParams(x: number, y?: number): this;
+  readonly hookParams: [number, number];
   worldPosition<T extends Vec3>(out: T): T;
   children(): Node[];
   find(name: string | RegExp): Node | null;
@@ -737,6 +812,24 @@ export interface OrbitOptions {
   zoomSpeed?: number;
   panSpeed?: number;
   damping?: number;
+}
+
+export class Input {
+  constructor(options?: { keys?: EventTarget; pointer?: HTMLElement | null; pads?: () => (Gamepad | null)[]; deadZone?: number });
+  deadZone: number;
+  readonly mouse: { x: number; y: number; dx: number; dy: number; wheel: number };
+  readonly pads: { index: number; id: string; standard: boolean }[];
+  readonly locked: boolean;
+  bind(action: string, sources: string[] | { negative?: string[]; positive?: string[]; axis?: string | null }): this;
+  down(name: string, pad?: number): boolean;
+  pressed(name: string, pad?: number): boolean;
+  released(name: string, pad?: number): boolean;
+  value(name: string, pad?: number): number;
+  update(): void;
+  poll(): void;
+  consume(): void;
+  lockPointer(): Promise<void> | undefined;
+  destroy(): void;
 }
 
 export class OrbitController {

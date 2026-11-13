@@ -31,8 +31,12 @@ export class Shader {
  * Async because getCompilationInfo() is, and it is awaited at load time --
  * which is exactly when you want to hear about a broken shader.
  */
-export async function compileShader(device, code, label = 'shader') {
+export async function compileShader(device, code, label = 'shader', { scoped = false } = {}) {
+  // scoped: code the app wrote (a surface hook), whose mistake is the app's to
+  // catch -- the thrown error, not an uncaptured one on the device as well.
+  if (scoped) device.pushErrorScope('validation');
   const shader = new Shader(device.createShaderModule({ label, code }), label);
+  if (scoped) device.popErrorScope().catch(() => {});
 
   const problem = report(await shader.module.getCompilationInfo(), code, label);
   if (problem) throw new Error(problem);
